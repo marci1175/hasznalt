@@ -1,10 +1,9 @@
 
 # Hasznalt
 
-<p align="center">
-
+<h2 align="center">
 The marketplace
-</p>
+</h2>
 
 ### Additional Info
 
