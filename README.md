@@ -1,6 +1,8 @@
-<center>
+<p align="center">
+
 # Hasznalt
-</center>
+
+</p>
 
 ## The marketplace
 
