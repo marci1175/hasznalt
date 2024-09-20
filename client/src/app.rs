@@ -10,7 +10,7 @@ use yew::prelude::*;
 pub fn app() -> Html {
     html! {
         <main class="container">
-            <h1>{ "Hello world" }</h1>
+            <h1>{ "Hellos world" }</h1>
         </main>
     }
 }
