@@ -1,10 +1,10 @@
-<p align="center">
 
 # Hasznalt
 
-</p>
+<p align="center">
 
-## The marketplace
+The marketplace
+</p>
 
 ### Additional Info
 
