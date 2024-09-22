@@ -1,3 +1,4 @@
+use client::Searchbar;
 use yew::prelude::*;
 
 // #[wasm_bindgen]
@@ -9,8 +10,16 @@ use yew::prelude::*;
 #[function_component(App)]
 pub fn app() -> Html {
     html! {
-        <main class="container">
-            <h1>{ "Hellos world" }</h1>
-        </main>
+        <>
+        <div id="navigation">
+            <button>{"Regisztráció"}</button>
+            <button>{"Belépés"}</button>
+        </div>
+
+        <div id="main_search">
+            <h1>{ "Hasznalt.hu" }</h1>
+            <Searchbar default_text="Keresés"/>
+        </div>
+        </>
     }
 }
