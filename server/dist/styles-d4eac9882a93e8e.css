@@ -90,12 +90,6 @@ h1 {
   font-family: Verdana, Geneva, Tahoma, sans-serif;
 }
 
-#search_bar {
-  display: flex;
-  gap: 10px;
-  place-self: center;
-}
-
 button {
   cursor: pointer;
   font-weight: 500;

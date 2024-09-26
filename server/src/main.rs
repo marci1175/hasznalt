@@ -1,6 +1,7 @@
 use tokio::net::TcpListener;
 
 use axum::{extract::{ws::{WebSocket, WebSocketUpgrade}, State}, response::{Html, IntoResponse}, routing::get, serve, Router};
+use yew::html;
 
 #[derive(Debug, Clone)]
 struct AppState {}
@@ -24,5 +25,5 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handler() -> Html<&'static str> {
-    Html(include_str!("../../client/dist/index.html"))
+    Html("<h1>Bálint ist ein</h1>")
 }
