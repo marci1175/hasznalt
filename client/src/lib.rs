@@ -1,6 +1,6 @@
 use web_sys::HtmlTextAreaElement;
-use yew::{html, Callback, Component, InputEvent, Properties, TargetCast, UseStateHandle};
-
+use yew::{virtual_dom::VNode, Callback, Component, Html, InputEvent, MouseEvent, Properties, TargetCast, UseStateHandle};
+use yew::html;
 pub struct Searchbar;
 
 #[derive(Debug, PartialEq, Properties)]
@@ -19,7 +19,7 @@ impl Component for Searchbar {
     type Properties = SearchbarProperties;
 
     fn create(_ctx: &yew::Context<Self>) -> Self {
-        Self
+        Self    
     }
 
     fn view(&self, ctx: &yew::Context<Self>) -> yew::Html {
@@ -51,7 +51,9 @@ pub struct SearchButton;
 #[derive(Debug, PartialEq, Properties)]
 pub struct SearchButtonProperties
 {
-    pub label: UseStateHandle<String>,
+    pub label: VNode,
+
+    pub callback: Callback<MouseEvent>, 
 }
 
 impl Component for SearchButton
@@ -65,12 +67,8 @@ impl Component for SearchButton
     }
 
     fn view(&self, ctx: &yew::Context<Self>) -> yew::Html {
-        let onclick_callback = Callback::from(move |event: yew::MouseEvent| {
-
-        });
-
         html!(
-            <button onclick={onclick_callback}><img src="public\\search.svg" height=20/></button>
+            <button onclick={ctx.props().callback.clone()}>{ctx.props().label.clone()}</button>
         )
     }
 }
