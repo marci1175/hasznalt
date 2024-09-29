@@ -1,25 +1,50 @@
 use web_sys::HtmlTextAreaElement;
-use yew::{virtual_dom::VNode, Callback, Component, InputEvent, MouseEvent, Properties, TargetCast, UseStateHandle};
 use yew::html;
-pub struct Searchbar;
+use yew::{
+    virtual_dom::VNode, Callback, Component, InputEvent, MouseEvent, Properties, TargetCast,
+    UseStateHandle,
+};
 
+/// ```TextField``` component definition
+pub struct TextField;
+
+/// ```TextField``` properties.
 #[derive(Debug, PartialEq, Properties)]
-pub struct SearchbarProperties {
+pub struct TextFieldProperties {
+    /// The placeholder text this ```TextField``` should display when it's empty.
     pub default_text: UseStateHandle<String>,
+
+    /// The text buffer is where the entered text is stored at
     pub text_buffer: UseStateHandle<String>,
+
+    /// Specify the input type of this ```TextField```. (This field is optional, the default is "text")
+    #[prop_or_default]
+    pub input_type: String,
+
+    /// The id of the ```TextField``` (This field is optional)
+    #[prop_or_default]
+    pub id: String,
 }
 
-pub enum SearchBarMessage {
+impl Default for TextFieldProperties {
+    fn default() -> Self {
+        Self { input_type: String::from("text"), id: String::new(), default_text: unimplemented!("A value must be passed in for this field"), text_buffer: unimplemented!("A value must be passed in for this field") }
+    }
+}
+
+/// The ```TextField``` update's messages
+pub enum TextFieldMessage {
+    /// This get sent when the TextField has it's buffer updated
     ValueUpdate(String),
 }
 
-impl Component for Searchbar {
-    type Message = SearchBarMessage;
+impl Component for TextField {
+    type Message = TextFieldMessage;
 
-    type Properties = SearchbarProperties;
+    type Properties = TextFieldProperties;
 
     fn create(_ctx: &yew::Context<Self>) -> Self {
-        Self    
+        Self
     }
 
     fn view(&self, ctx: &yew::Context<Self>) -> yew::Html {
@@ -27,40 +52,46 @@ impl Component for Searchbar {
             ctx.link().callback(move |event: InputEvent| {
                 let html_elem: HtmlTextAreaElement = event.target_unchecked_into();
 
-                SearchBarMessage::ValueUpdate(html_elem.value())
+                TextFieldMessage::ValueUpdate(html_elem.value())
             });
 
         html!(
-            <input type="text" placeholder={ctx.props().default_text.to_string()} oninput={text_edit_value_callback}/>
-        )    
+            <input id={ctx.props().id.clone()} type={ctx.props().input_type.clone()} placeholder={ctx.props().default_text.to_string()} oninput={text_edit_value_callback}/>
+        )
     }
-    
+
     fn update(&mut self, ctx: &yew::Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            SearchBarMessage::ValueUpdate(msg) => {
+            TextFieldMessage::ValueUpdate(msg) => {
                 ctx.props().text_buffer.set(msg);
-            },
+            }
         }
 
         true
     }
 }
 
+/// ```Button``` component definition
 pub struct Button;
 
+/// ```Button``` properties.
 #[derive(Debug, PartialEq, Properties)]
-pub struct SearchButtonProperties
-{
+pub struct ButtonProperties {
+    /// Label for this button, this is an html element.
     pub label: VNode,
 
-    pub callback: Callback<MouseEvent>, 
+    /// Callback is called when the button is called
+    pub callback: Callback<MouseEvent>,
+
+    /// The id of the button (This field is optional)
+    #[prop_or_default]
+    pub id: String,
 }
 
-impl Component for Button
-{
+impl Component for Button {
     type Message = ();
 
-    type Properties = SearchButtonProperties;
+    type Properties = ButtonProperties;
 
     fn create(_ctx: &yew::Context<Self>) -> Self {
         Self
@@ -68,7 +99,7 @@ impl Component for Button
 
     fn view(&self, ctx: &yew::Context<Self>) -> yew::Html {
         html!(
-            <button onclick={ctx.props().callback.clone()}>{ctx.props().label.clone()}</button>
+            <button id={ctx.props().id.clone()} onclick={ctx.props().callback.clone()}>{ctx.props().label.clone()}</button>
         )
     }
 }

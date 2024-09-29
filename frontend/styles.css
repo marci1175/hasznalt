@@ -4,15 +4,28 @@
   line-height: 24px;
   font-weight: 400;
 
-  color: #000000;
-  background-color: #f6f6f6;
+  background-color: #000000;
 
   font-synthesis: none;
-  text-shadow: #000000 0px 0px 5px;
+  text-shadow: #6a6a6a 0px 0px 5px;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #8f8f8f;
+    background-color: #000000;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #000000;
+    background-color: #8f8f8f;
+  }
 }
 
 input,
@@ -23,17 +36,17 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
+  color: inherit;
+  background-color: #0f0f0f;
   transition: border-color 0.25s;
-  box-shadow: 2px 3px 3px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0px 0px 10px 4px rgba(149, 149, 149, 0.2);
   animation-name: deselected_input;
   animation-duration: 200ms;
   animation-fill-mode: backwards;
   outline: none;
 }
 
-input:focus, button:hover {
+input:hover, input:focus, button:hover {
   animation-name: selected_input;
   animation-duration: 300ms;
   animation-fill-mode: forwards;
@@ -41,27 +54,19 @@ input:focus, button:hover {
 
 @keyframes selected_input {
   from {
-    box-shadow: 2px 3px 3px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0px 0px 10px 4px rgba(183, 183, 183, 0.2);
   }
   to {
-    box-shadow: 2px 3px 3px 2px rgba(0, 0, 0, 0.5);
+    box-shadow: 0px 0px 10px 4px rgba(183, 183, 183,  0.5);
   }
 }
 
 @keyframes deselected_input {
   to {
-    box-shadow: 2px 3px 3px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0px 0px 10px 4px rgba(183, 183, 183,  0.2);
   }
   from {
-    box-shadow: 2px 3px 3px 2px rgba(0, 0, 0, 0.5);
-  }
-}
-
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #000000;
-    background-color: #ffffff;
+    box-shadow: 0px 0px 10px 4px rgba(183, 183, 183,  0.5);
   }
 }
 
@@ -78,6 +83,10 @@ input:focus, button:hover {
 
 h1 {
   font-size: 6vh;
+}
+
+h2 {
+  font-size: 5vh;
 }
 
 #navigation {
@@ -99,4 +108,62 @@ h1 {
 button {
   cursor: pointer;
   font-weight: 500;
+}
+
+#nav_area {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  margin-bottom: 20px; 
+}
+
+#login_island {
+  display: grid;
+  justify-content: center;
+  margin-top: 30vh;
+  gap: 20px;
+}
+
+#misc_area {
+  display: flex;
+  gap: 10px;
+  max-width: fit-content;
+  font-size: small;
+  font-style: oblique;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+#back_button {
+  font-size: large;
+  color: rgb(138, 191, 255);
+}
+
+a:hover {
+  animation-name: link-hovered;
+  animation-duration: 200ms;
+  animation-fill-mode: both;
+}
+
+#back_button:hover {
+  animation-name: link-hovered, selected_input; 
+  animation-duration: 200ms, 200ms;
+  animation-fill-mode: both, both;
+}
+
+a {
+  color: rgb(138, 191, 255);
+}
+
+@keyframes link-hovered {
+  from {
+    color: rgb(138, 191, 255);
+  }    
+  to {
+    color: rgb(255, 174, 0);
+  }
+}
+
+:root {
+  background-color: #000000;
 }

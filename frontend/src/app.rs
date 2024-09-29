@@ -1,17 +1,21 @@
-use client::{Button, Searchbar};
-use wasm_bindgen::JsValue;
-use web_sys::console;
+use client::{Button, TextField};
 use yew::prelude::*;
-use yew_router::{BrowserRouter, Routable, Switch};
+use yew_router::{hooks::use_navigator, navigator, BrowserRouter, Routable, Switch};
 
 #[derive(Routable, Clone, Copy, PartialEq)]
 enum Route {
     #[at("/")]
+    MainPage,
+    #[at("/register")]
+    Register,
+    #[at("/login")]
     Login,
 }
 
 fn switch(routes: Route) -> Html {
     match routes {
+        Route::MainPage => html! { <Main /> },
+        Route::Register => html! {},
         Route::Login => html! { <Login /> },
     }
 }
@@ -25,31 +29,71 @@ pub fn app() -> Html {
     }
 }
 
-#[function_component(Login)]
-pub fn login_page() -> Html {
+#[function_component(Main)]
+pub fn main_page() -> Html {
+    let navigator = use_navigator().unwrap();
     let searchbar_text = use_state(|| String::from("Keresés"));
     let search_buffer = use_state(|| String::new());
 
-    let on_click = Callback::from(|_| {
-        wasm_bindgen_futures::spawn_local(async {
-            console::debug_1(&JsValue::from_str(&reqwest::get("http://[::1]:3004/test").await.unwrap().text().await.unwrap()));
-        });
-    });
-    
     html! {
         <>
             <div id="navigation">
-                <button>{"Regisztráció"}</button>
-                <button>{"Belépés"}</button>
+                <Button label={
+                    "Regisztráció"
+                } callback={
+                    let navigator = navigator.clone();
+                    Callback::from(move |_| {
+                        navigator.push(&Route::Register);
+                    })
+                }/>
+
+                <Button label={
+                    "Bejelentkezés"
+                } callback={
+                    let navigator = navigator.clone();
+                    Callback::from(move |_| {
+                        navigator.push(&Route::Login);
+                    })
+                }/>
             </div>
 
             <div id="main_search">
             <h1>{ "Hasznalt.hu" }</h1>
                 <div id="search_bar">
-                    <Searchbar default_text={searchbar_text} text_buffer={search_buffer.clone()}/>
-                    <Button label={html!(<img src="public\\search.svg" height=20/>)} callback={on_click}/>
+                    <TextField default_text={searchbar_text} text_buffer={search_buffer.clone()}/>
+                    <Button id="search_button" label={html!(<img src="public\\search.svg" height=20/>)} callback={Callback::from(|_| {})}/>
                 </div>
             </div>
         </>
     }
+}
+
+#[function_component(Login)]
+pub fn login_page() -> Html {
+    let username_title = use_state(|| String::from("Felhasználónév"));
+    let password_title = use_state(|| String::from("Jelszó"));
+
+    let username_buffer = use_state(|| String::new());
+    let password_buffer = use_state(|| String::new());
+
+    html!(
+        <>
+            <div id="login_island">
+                <div id="nav_area">
+                    <h2>{"Bejelentkezés"}</h2>
+                </div>
+                <TextField default_text={username_title} text_buffer={username_buffer}/>
+                <TextField input_type="password" default_text={password_title} text_buffer={password_buffer}/>
+                <Button label={"Bejelentkezés"} callback={Callback::from(|_| {})}/>
+                <div id="misc_area">
+                    <a href="">
+                        <h5>{"Elfelejtette a jelszavát?"}</h5>
+                    </a>
+                    <a href="">
+                        <h5>{"Nincs fiókja?"}</h5>
+                    </a>
+                </div>
+            </div>
+        </>
+    )
 }
