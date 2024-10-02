@@ -1,4 +1,5 @@
 /target/
+/target-trunk/
 /Cargo.lock
 /client/dist
 /server/dist

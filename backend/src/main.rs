@@ -1,36 +1,34 @@
-use axum::{
-    response::{Html, IntoResponse},
-    routing::get,
-    serve, Router,
-};
-use reqwest::StatusCode;
 use std::path::PathBuf;
-use tokio::{fs, net::TcpListener};
-use tower::util::ServiceExt;
-use tower_http::services::ServeDir;
 
-#[derive(Debug, Clone)]
-struct AppState {}
+use axum::{
+    extract::{Path, State}, response::{Html, IntoResponse, Redirect}, routing::{get, post}, serve, Router
+};
+use backend::{establish_server_state, rs_type::NewAccount, ServerState};
+use diesel::{insert_into, Connection, RunQueryDsl};
+use reqwest::StatusCode;
+use serde::Deserialize;
+use tokio::{fs, net::TcpListener};
+use tower_http::services::ServeDir;
+use tower::util::ServiceExt;
 
 #[tokio::main]
-// #[axum::debug_handler]
 async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind("[::]:3004").await?;
 
-    let state = AppState {};
+    let state = establish_server_state()?;
 
     let app = Router::new()
-        .route("/test", get(handler))
+        //Define api routes
+        .route_service("/*api", get(|| async { Redirect::permanent("/") }))
+        .route("/api/register/*serde", post(get_account_request))
+        //Define service
         .fallback_service(get(|req| async move {
             let res = ServeDir::new("C:\\Users\\marci\\Desktop\\hasznalt\\frontend\\dist")
                 .oneshot(req)
                 .await
-                .unwrap(); // serve dir is infallible
+                .unwrap();
             let status = res.status();
             match status {
-                // If we don't find a file corresponding to the path we serve index.html.
-                // If you want to serve a 404 status code instead you can add a route check as shown in
-                // https://github.com/rksm/axum-yew-setup/commit/a48abfc8a2947b226cc47cbb3001c8a68a0bb25e
                 StatusCode::NOT_FOUND => {
                     let index_path =
                         PathBuf::from("C:\\Users\\marci\\Desktop\\hasznalt\\frontend\\dist")
@@ -55,6 +53,31 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn handler() -> String {
-    "Fasz".to_string()
+pub async fn get_account_request(State(state): State<ServerState>, Path(path): Path<String>) -> String {
+    match handle_account_request(path, state) {
+        Ok(_) => {
+            String::from("200")
+        },
+        Err(_err) => {
+            String::from("400")
+        },
+    }
+}
+
+pub fn deserialize_into_value<'a, T: Deserialize<'a>>(serialized_string: &'a str) -> anyhow::Result<T> {
+    return Ok(serde_json::from_str::<T>(&serialized_string)?);
+}
+
+use backend::schema::account;
+
+pub fn handle_account_request(request: String, state: ServerState) -> anyhow::Result<()> {
+    let parsed_account = deserialize_into_value::<NewAccount>(&request)?;
+
+    state.pgconnection.lock().unwrap().build_transaction().read_write().run(|conn| {
+        conn.transaction(|conn| {
+            insert_into(account::table).values(&parsed_account).execute(conn)
+        })
+    })?;
+
+    Ok(())
 }

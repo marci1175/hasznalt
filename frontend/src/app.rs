@@ -1,6 +1,9 @@
-use client::{Button, TextField};
+use frontend::{Button, TextField};
+use reqwest::Client;
+use wasm_bindgen::JsValue;
+use web_sys::{console, Request};
 use yew::prelude::*;
-use yew_router::{hooks::use_navigator, navigator, BrowserRouter, Routable, Switch};
+use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
 
 #[derive(Routable, Clone, Copy, PartialEq)]
 enum Route {
@@ -15,7 +18,7 @@ enum Route {
 fn switch(routes: Route) -> Html {
     match routes {
         Route::MainPage => html! { <Main /> },
-        Route::Register => html! {},
+        Route::Register => html! { <Register /> },
         Route::Login => html! { <Login /> },
     }
 }
@@ -73,26 +76,63 @@ pub fn login_page() -> Html {
     let username_title = use_state(|| String::from("Felhasználónév"));
     let password_title = use_state(|| String::from("Jelszó"));
 
+    let navigator = use_navigator().unwrap();
+
     let username_buffer = use_state(|| String::new());
     let password_buffer = use_state(|| String::new());
 
     html!(
         <>
-            <div id="login_island">
+            <div id="main_island">
                 <div id="nav_area">
                     <h2>{"Bejelentkezés"}</h2>
                 </div>
                 <TextField default_text={username_title} text_buffer={username_buffer}/>
                 <TextField input_type="password" default_text={password_title} text_buffer={password_buffer}/>
-                <Button label={"Bejelentkezés"} callback={Callback::from(|_| {})}/>
+                <Button label={"Regisztráció"} callback={Callback::from(|_| {
+                    
+                })}/>
                 <div id="misc_area">
-                    <a href="">
+                    <a href=".">
                         <h5>{"Elfelejtette a jelszavát?"}</h5>
                     </a>
-                    <a href="">
+                    <a href="." onclick={Callback::from(move |_| {
+                        navigator.push(&Route::Register);
+                    })}>
                         <h5>{"Nincs fiókja?"}</h5>
                     </a>
                 </div>
+            </div>
+        </>
+    )
+}
+
+#[function_component(Register)]
+pub fn register_page() -> Html {
+    let username_title = use_state(|| String::from("Felhasználónév"));
+    let password_title = use_state(|| String::from("Jelszó"));
+    let username_buffer = use_state(|| String::new());
+    let password_buffer = use_state(|| String::new());
+
+    let client = Client::new();
+
+    html!(
+        <>
+            <div id="main_island">
+                <div id="nav_area">
+                    <h2>{"Regisztráció"}</h2>
+                </div>
+                <TextField default_text={username_title} text_buffer={username_buffer}/>
+                <TextField input_type="password" default_text={password_title} text_buffer={password_buffer}/>
+                <Button label={"Regisztráció"} callback={
+                    Callback::from(move |_| {
+                        let post_request = client.post("http://[::1]:3004/api/register");
+                    
+                        wasm_bindgen_futures::spawn_local(async {
+                            post_request.send().await.unwrap();
+                        });
+                    })}
+                />
             </div>
         </>
     )
