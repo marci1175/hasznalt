@@ -1,15 +1,19 @@
 use std::path::PathBuf;
 
 use axum::{
-    extract::{Path, State}, response::{Html, IntoResponse, Redirect}, routing::{get, post}, serve, Router
+    body::Body, extract::{self, Path, State}, response::{Html, IntoResponse, Redirect}, routing::{get, post}, serve, Form, Json, Router
 };
-use backend::{establish_server_state, rs_type::NewAccount, ServerState};
+use backend::{db_type::Account, establish_server_state, rs_type::NewAccount, ServerState};
 use diesel::{insert_into, Connection, RunQueryDsl};
-use reqwest::StatusCode;
+use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use tokio::{fs, net::TcpListener};
-use tower_http::services::ServeDir;
 use tower::util::ServiceExt;
+use tower_http::{
+    cors::{Any, Cors, CorsLayer},
+    services::ServeDir,
+    trace::TraceLayer,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -17,10 +21,11 @@ async fn main() -> anyhow::Result<()> {
 
     let state = establish_server_state()?;
 
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::HEAD])
+        .allow_origin(Any);
+
     let app = Router::new()
-        //Define api routes
-        .route_service("/*api", get(|| async { Redirect::permanent("/") }))
-        .route("/api/register/*serde", post(get_account_request))
         //Define service
         .fallback_service(get(|req| async move {
             let res = ServeDir::new("C:\\Users\\marci\\Desktop\\hasznalt\\frontend\\dist")
@@ -46,6 +51,16 @@ async fn main() -> anyhow::Result<()> {
                 _ => res.into_response(),
             }
         }))
+
+        /*
+            Define api routes
+        */
+        
+        //ERROR
+        // .route("/*api", get(|| async { Redirect::permanent("/") }))
+
+        .route("/api/register", post(get_account_request))
+        .layer(cors)
         .with_state(state);
 
     serve(listener, app).await?;
@@ -53,31 +68,38 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn get_account_request(State(state): State<ServerState>, Path(path): Path<String>) -> String {
-    match handle_account_request(path, state) {
-        Ok(_) => {
-            String::from("200")
-        },
-        Err(_err) => {
-            String::from("400")
-        },
+pub async fn get_account_request(
+    State(state): State<ServerState>,
+    Json(body): Json<NewAccount>,
+) -> String {
+    match handle_account_request(dbg!(body), state) {
+        Ok(_) => String::from("200"),
+        Err(_err) => String::from("400"),
     }
 }
 
-pub fn deserialize_into_value<'a, T: Deserialize<'a>>(serialized_string: &'a str) -> anyhow::Result<T> {
+pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
+    serialized_string: &'a str,
+) -> anyhow::Result<T> {
     return Ok(serde_json::from_str::<T>(&serialized_string)?);
 }
 
 use backend::schema::account;
 
-pub fn handle_account_request(request: String, state: ServerState) -> anyhow::Result<()> {
-    let parsed_account = deserialize_into_value::<NewAccount>(&request)?;
-
-    state.pgconnection.lock().unwrap().build_transaction().read_write().run(|conn| {
-        conn.transaction(|conn| {
-            insert_into(account::table).values(&parsed_account).execute(conn)
-        })
-    })?;
+pub fn handle_account_request(request: NewAccount, state: ServerState) -> anyhow::Result<()> {
+    state
+        .pgconnection
+        .lock()
+        .unwrap()
+        .build_transaction()
+        .read_write()
+        .run(|conn| {
+            conn.transaction(|conn| {
+                insert_into(account::table)
+                    .values(&request)
+                    .execute(conn)
+            })
+        })?;
 
     Ok(())
 }

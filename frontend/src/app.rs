@@ -1,4 +1,4 @@
-use frontend::{Button, TextField};
+use frontend::{Button, NewAccount, TextField};
 use reqwest::Client;
 use wasm_bindgen::JsValue;
 use web_sys::{console, Request};
@@ -83,8 +83,8 @@ pub fn login_page() -> Html {
 
     html!(
         <>
-            <div id="main_island">
-                <div id="nav_area">
+            <div id="login_island">
+                <div id="login_nav_area">
                     <h2>{"Bejelentkezés"}</h2>
                 </div>
                 <TextField default_text={username_title} text_buffer={username_buffer}/>
@@ -118,18 +118,29 @@ pub fn register_page() -> Html {
 
     html!(
         <>
-            <div id="main_island">
-                <div id="nav_area">
+            <div id="register_area">
+                <div id="register_nav_area">
                     <h2>{"Regisztráció"}</h2>
                 </div>
-                <TextField default_text={username_title} text_buffer={username_buffer}/>
-                <TextField input_type="password" default_text={password_title} text_buffer={password_buffer}/>
+                <TextField default_text={username_title} text_buffer={username_buffer.clone()}/>
+                <TextField input_type="password" default_text={password_title} text_buffer={password_buffer.clone()}/>
                 <Button label={"Regisztráció"} callback={
                     Callback::from(move |_| {
-                        let post_request = client.post("http://[::1]:3004/api/register");
-                    
-                        wasm_bindgen_futures::spawn_local(async {
-                            post_request.send().await.unwrap();
+                        let post_request = client.post(format!("http://[::1]:3004/api/register"));
+                        let password_buffer = password_buffer.clone();
+                        let username_buffer = username_buffer.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            post_request
+                                .header("Content-Type", "application/json")
+                                .body(
+                                    serde_json::to_string(&NewAccount {
+                                        password: password_buffer.to_string(),
+                                        username: username_buffer.to_string(),
+                                    }).unwrap()
+                                )
+                                .send()
+                                .await
+                                .unwrap();
                         });
                     })}
                 />

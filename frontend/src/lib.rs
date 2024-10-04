@@ -1,3 +1,4 @@
+use serde::Serialize;
 use web_sys::HtmlTextAreaElement;
 use yew::html;
 use yew::{
@@ -28,7 +29,12 @@ pub struct TextFieldProperties {
 
 impl Default for TextFieldProperties {
     fn default() -> Self {
-        Self { input_type: String::from("text"), id: String::new(), default_text: unimplemented!("A value must be passed in for this field"), text_buffer: unimplemented!("A value must be passed in for this field") }
+        Self {
+            input_type: String::from("text"),
+            id: String::new(),
+            default_text: unimplemented!("A value must be passed in for this field"),
+            text_buffer: unimplemented!("A value must be passed in for this field"),
+        }
     }
 }
 
@@ -102,4 +108,10 @@ impl Component for Button {
             <button id={ctx.props().id.clone()} onclick={ctx.props().callback.clone()}>{ctx.props().label.clone()}</button>
         )
     }
+}
+
+#[derive(Serialize)]
+pub struct NewAccount {
+    pub username: String,
+    pub password: String,
 }

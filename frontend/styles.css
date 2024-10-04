@@ -118,7 +118,7 @@ button {
   margin-bottom: 20px; 
 }
 
-#main_island {
+#login_island, #register_area {
   display: grid;
   justify-content: center;
   margin-top: 30vh;

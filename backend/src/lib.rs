@@ -1,7 +1,6 @@
 use diesel::{Connection, PgConnection};
 use std::sync::{Arc, Mutex};
 
-
 pub mod schema;
 
 #[derive(Clone)]
@@ -10,8 +9,8 @@ pub struct ServerState {
 }
 
 pub mod db_type {
-    use serde::{Deserialize, Serialize};
     use diesel::prelude::Queryable;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Queryable, Deserialize, Serialize, Clone)]
     #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -29,18 +28,18 @@ pub mod rs_type {
 
     use crate::schema::account;
 
-    #[derive(Insertable, Deserialize, Serialize, Clone)]
+    #[derive(Insertable, Deserialize, Serialize, Clone, Debug)]
     #[diesel(table_name = account)]
-    pub struct NewAccount<'a> {
-        username: &'a str,
-        password: &'a str,
+    pub struct NewAccount {
+        pub username: String,
+        pub password: String,
     }
 }
 
 pub fn establish_server_state() -> anyhow::Result<ServerState> {
-    // let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-
     let pgconnection = diesel::PgConnection::establish(include_str!("..\\..\\.env"))?;
 
-    Ok(ServerState {pgconnection: Arc::new(Mutex::new(pgconnection))})
+    Ok(ServerState {
+        pgconnection: Arc::new(Mutex::new(pgconnection)),
+    })
 }
