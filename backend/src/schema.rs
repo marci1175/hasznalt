@@ -1,5 +1,5 @@
 diesel::table! {
-    account (id) {
+    account (username) {
         id -> Int4,
         username -> Text,
         password -> Text,

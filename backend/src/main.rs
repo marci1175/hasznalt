@@ -1,10 +1,10 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, ptr::NonNull};
 
 use axum::{
     body::Body, extract::{self, Path, State}, response::{Html, IntoResponse, Redirect}, routing::{get, post}, serve, Form, Json, Router
 };
-use backend::{db_type::Account, establish_server_state, rs_type::NewAccount, ServerState};
-use diesel::{insert_into, Connection, RunQueryDsl};
+use backend::{db_type::Account, establish_server_state, schema::account::username, ServerState};
+use diesel::{insert_into, query_dsl::methods::FindDsl, Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use tokio::{fs, net::TcpListener};
@@ -59,7 +59,8 @@ async fn main() -> anyhow::Result<()> {
         //ERROR
         // .route("/*api", get(|| async { Redirect::permanent("/") }))
 
-        .route("/api/register", post(get_account_request))
+        .route("/api/register", post(get_account_register_request))
+        .route("/api/login", post(get_account_login_request))
         .layer(cors)
         .with_state(state);
 
@@ -68,15 +69,26 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn get_account_request(
+pub async fn get_account_register_request(
     State(state): State<ServerState>,
-    Json(body): Json<NewAccount>,
+    Json(body): Json<Account>,
 ) -> String {
-    match handle_account_request(body, state) {
+    match handle_account_register_request(body, state) {
         Ok(_) => String::from("200"),
         Err(_err) => String::from("400"),
     }
 }
+
+pub async fn get_account_login_request(
+    State(state): State<ServerState>,
+    Json(body): Json<Account>,
+) -> String {
+    match handle_account_login_request(body, state) {
+        Ok(login) => String::from("200"),
+        Err(_err) => String::from("400"),
+    }
+}
+
 
 pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
     serialized_string: &'a str,
@@ -86,7 +98,7 @@ pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
 
 use backend::schema::account;
 
-pub fn handle_account_request(request: NewAccount, state: ServerState) -> anyhow::Result<()> {
+pub fn handle_account_register_request(request: Account, state: ServerState) -> anyhow::Result<()> {
     state
         .pgconnection
         .lock()
@@ -98,6 +110,24 @@ pub fn handle_account_request(request: NewAccount, state: ServerState) -> anyhow
                 insert_into(account::table)
                     .values(&request)
                     .execute(conn)
+            })
+        })?;
+
+    Ok(())
+}
+
+/// This function is going to read data out of the database and return a login if it was successful
+pub fn handle_account_login_request(request: Account, state: ServerState) -> anyhow::Result<()> {
+    state
+        .pgconnection
+        .lock()
+        .unwrap()
+        .build_transaction()
+        .read_only()
+        .run(|conn| {
+            conn.transaction(|conn| {
+                account::dsl::account.filter(username.eq(request.username))
+                    .first::<Account>(conn).optional()
             })
         })?;
 

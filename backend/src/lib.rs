@@ -9,30 +9,19 @@ pub struct ServerState {
 }
 
 pub mod db_type {
-    use diesel::prelude::Queryable;
+    use diesel::prelude::{Insertable, Queryable, QueryableByName};
     use serde::{Deserialize, Serialize};
 
-    #[derive(Queryable, Deserialize, Serialize, Clone)]
+    use crate::schema::account;
+
+    #[derive(QueryableByName, Queryable, Insertable, Deserialize, Serialize, Clone)]
     #[diesel(check_for_backend(diesel::pg::Pg))]
+    #[diesel(table_name = account)]
     pub struct Account {
         pub id: i32,
         pub username: String,
         pub password: String,
         pub created_at: chrono::NaiveDateTime,
-    }
-}
-
-pub mod rs_type {
-    use diesel::Insertable;
-    use serde::{Deserialize, Serialize};
-
-    use crate::schema::account;
-
-    #[derive(Insertable, Deserialize, Serialize, Clone, Debug)]
-    #[diesel(table_name = account)]
-    pub struct NewAccount {
-        pub username: String,
-        pub password: String,
     }
 }
 

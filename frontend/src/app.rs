@@ -87,11 +87,30 @@ pub fn login_page() -> Html {
                 <div id="login_nav_area">
                     <h2>{"Bejelentkezés"}</h2>
                 </div>
-                <TextField default_text={username_title} text_buffer={username_buffer}/>
-                <TextField input_type="password" default_text={password_title} text_buffer={password_buffer}/>
-                <Button label={"Regisztráció"} callback={Callback::from(|_| {
-                    
+                <TextField default_text={username_title} text_buffer={username_buffer.clone()}/>
+                <TextField input_type="password" default_text={password_title} text_buffer={password_buffer.clone()}/>
+
+                <Button label={"Bejelentkezés"} callback={Callback::from(move |_| {
+                    let client = Client::new();
+
+                    let post_request = client.post(format!("http://[::1]:3004/api/login"));
+                    let password_buffer = password_buffer.clone();
+                    let username_buffer = username_buffer.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        post_request
+                            .header("Content-Type", "application/json")
+                            .body(
+                                serde_json::to_string(&NewAccount {
+                                    password: password_buffer.to_string(),
+                                    username: username_buffer.to_string(),
+                                }).unwrap()
+                            )
+                            .send()
+                            .await
+                            .unwrap();
+                    });
                 })}/>
+
                 <div id="misc_area">
                     <a href=".">
                         <h5>{"Elfelejtette a jelszavát?"}</h5>
@@ -114,8 +133,6 @@ pub fn register_page() -> Html {
     let username_buffer = use_state(|| String::new());
     let password_buffer = use_state(|| String::new());
 
-    let client = Client::new();
-
     html!(
         <>
             <div id="register_area">
@@ -126,6 +143,8 @@ pub fn register_page() -> Html {
                 <TextField input_type="password" default_text={password_title} text_buffer={password_buffer.clone()}/>
                 <Button label={"Regisztráció"} callback={
                     Callback::from(move |_| {
+                        let client = Client::new();
+
                         let post_request = client.post(format!("http://[::1]:3004/api/register"));
                         let password_buffer = password_buffer.clone();
                         let username_buffer = username_buffer.clone();
