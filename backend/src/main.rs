@@ -72,7 +72,7 @@ pub async fn get_account_request(
     State(state): State<ServerState>,
     Json(body): Json<NewAccount>,
 ) -> String {
-    match handle_account_request(dbg!(body), state) {
+    match handle_account_request(body, state) {
         Ok(_) => String::from("200"),
         Err(_err) => String::from("400"),
     }
