@@ -1,18 +1,24 @@
-use std::{path::PathBuf, ptr::NonNull};
+use std::path::PathBuf;
 
+use anyhow::bail;
 use axum::{
-    body::Body, extract::{self, Path, State}, response::{Html, IntoResponse, Redirect}, routing::{get, post}, serve, Form, Json, Router
+    extract::State,
+    response::{Html, IntoResponse},
+    routing::{get, post},
+    serve, Json, Router,
 };
 use backend::{db_type::Account, establish_server_state, schema::account::username, ServerState};
-use diesel::{insert_into, query_dsl::methods::FindDsl, Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{
+    insert_into, Connection, ExpressionMethods, OptionalExtension,
+    QueryDsl, RunQueryDsl,
+};
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use tokio::{fs, net::TcpListener};
 use tower::util::ServiceExt;
 use tower_http::{
-    cors::{Any, Cors, CorsLayer},
+    cors::{Any, CorsLayer},
     services::ServeDir,
-    trace::TraceLayer,
 };
 
 #[tokio::main]
@@ -51,14 +57,11 @@ async fn main() -> anyhow::Result<()> {
                 _ => res.into_response(),
             }
         }))
-
         /*
             Define api routes
         */
-        
         //ERROR
         // .route("/*api", get(|| async { Redirect::permanent("/") }))
-
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
         .layer(cors)
@@ -89,16 +92,18 @@ pub async fn get_account_login_request(
     }
 }
 
-
 pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
     serialized_string: &'a str,
 ) -> anyhow::Result<T> {
-    return Ok(serde_json::from_str::<T>(&serialized_string)?);
+    Ok(serde_json::from_str::<T>(serialized_string)?)
 }
 
 use backend::schema::account;
 
-pub fn handle_account_register_request(request: Account, state: ServerState) -> anyhow::Result<()> {
+/// This function is going to write data to the database and return an ```anyhow::Result<usize>```
+/// If the query was unsuccessful or didnt find the user it will return ```Ok(usize)```, with the inner value being the nuber of rows inserted.
+/// If the query was successfull and found the user the client requested it will return an ```Error(_)```
+pub fn handle_account_register_request(request: Account, state: ServerState) -> anyhow::Result<usize> {
     state
         .pgconnection
         .lock()
@@ -106,18 +111,26 @@ pub fn handle_account_register_request(request: Account, state: ServerState) -> 
         .build_transaction()
         .read_write()
         .run(|conn| {
-            conn.transaction(|conn| {
-                insert_into(account::table)
-                    .values(&request)
-                    .execute(conn)
-            })
-        })?;
-
-    Ok(())
+            if let Ok(Some(_)) = account::dsl::account
+                .filter(username.eq(&request.username))
+                .first::<Account>(conn)
+                .optional()
+            {
+                bail!("User already exists.")
+            } else {
+                conn
+                    .transaction(|conn| insert_into(account::table).values(&request).execute(conn)).map_err(anyhow::Error::from)
+            }
+        })
 }
 
-/// This function is going to read data out of the database and return a login if it was successful
-pub fn handle_account_login_request(request: Account, state: ServerState) -> anyhow::Result<()> {
+/// This function is going to read data out of the database and return an ```anyhow::Result<Option<Account>>```
+/// If the query was unsuccessful or didnt find the user it will return an error.
+/// If the query was successfull and found the user the client requested it will return an ```Account```
+pub fn handle_account_login_request(
+    request: Account,
+    state: ServerState,
+) -> anyhow::Result<Account> {
     state
         .pgconnection
         .lock()
@@ -126,10 +139,10 @@ pub fn handle_account_login_request(request: Account, state: ServerState) -> any
         .read_only()
         .run(|conn| {
             conn.transaction(|conn| {
-                account::dsl::account.filter(username.eq(request.username))
-                    .first::<Account>(conn).optional()
+                account::dsl::account
+                    .filter(username.eq(request.username))
+                    .first::<Account>(conn)
             })
-        })?;
-
-    Ok(())
+        })
+        .map_err(anyhow::Error::from)
 }

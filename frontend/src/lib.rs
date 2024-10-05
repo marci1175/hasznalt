@@ -33,6 +33,7 @@ impl Default for TextFieldProperties {
             input_type: String::from("text"),
             id: String::new(),
             default_text: unimplemented!("A value must be passed in for this field"),
+            #[allow(unreachable_code)]
             text_buffer: unimplemented!("A value must be passed in for this field"),
         }
     }

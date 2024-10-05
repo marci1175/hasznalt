@@ -1,7 +1,5 @@
 use frontend::{Button, NewAccount, TextField};
 use reqwest::Client;
-use wasm_bindgen::JsValue;
-use web_sys::{console, Request};
 use yew::prelude::*;
 use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
 
@@ -36,7 +34,7 @@ pub fn app() -> Html {
 pub fn main_page() -> Html {
     let navigator = use_navigator().unwrap();
     let searchbar_text = use_state(|| String::from("Keresés"));
-    let search_buffer = use_state(|| String::new());
+    let search_buffer = use_state(String::new);
 
     html! {
         <>
@@ -78,8 +76,8 @@ pub fn login_page() -> Html {
 
     let navigator = use_navigator().unwrap();
 
-    let username_buffer = use_state(|| String::new());
-    let password_buffer = use_state(|| String::new());
+    let username_buffer = use_state(String::new);
+    let password_buffer = use_state(String::new);
 
     html!(
         <>
@@ -93,7 +91,7 @@ pub fn login_page() -> Html {
                 <Button label={"Bejelentkezés"} callback={Callback::from(move |_| {
                     let client = Client::new();
 
-                    let post_request = client.post(format!("http://[::1]:3004/api/login"));
+                    let post_request = client.post("http://[::1]:3004/api/login".to_string());
                     let password_buffer = password_buffer.clone();
                     let username_buffer = username_buffer.clone();
                     wasm_bindgen_futures::spawn_local(async move {
@@ -130,8 +128,8 @@ pub fn login_page() -> Html {
 pub fn register_page() -> Html {
     let username_title = use_state(|| String::from("Felhasználónév"));
     let password_title = use_state(|| String::from("Jelszó"));
-    let username_buffer = use_state(|| String::new());
-    let password_buffer = use_state(|| String::new());
+    let username_buffer = use_state(String::new);
+    let password_buffer = use_state(String::new);
 
     html!(
         <>
@@ -145,7 +143,7 @@ pub fn register_page() -> Html {
                     Callback::from(move |_| {
                         let client = Client::new();
 
-                        let post_request = client.post(format!("http://[::1]:3004/api/register"));
+                        let post_request = client.post("http://[::1]:3004/api/register".to_string());
                         let password_buffer = password_buffer.clone();
                         let username_buffer = username_buffer.clone();
                         wasm_bindgen_futures::spawn_local(async move {
