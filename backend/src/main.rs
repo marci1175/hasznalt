@@ -1,19 +1,13 @@
 use std::path::PathBuf;
 
-use anyhow::bail;
 use axum::{
     extract::State,
     response::{Html, IntoResponse},
     routing::{get, post},
     serve, Json, Router,
 };
-use backend::{db_type::Account, establish_server_state, schema::account::username, ServerState};
-use diesel::{
-    insert_into, Connection, ExpressionMethods, OptionalExtension,
-    QueryDsl, RunQueryDsl,
-};
+use backend::{client_type::AccountLogin, db_type::Account, establish_server_state, handle_account_login_request, handle_account_register_request, ServerState};
 use reqwest::{Method, StatusCode};
-use serde::Deserialize;
 use tokio::{fs, net::TcpListener};
 use tower::util::ServiceExt;
 use tower_http::{
@@ -74,75 +68,20 @@ async fn main() -> anyhow::Result<()> {
 
 pub async fn get_account_register_request(
     State(state): State<ServerState>,
-    Json(body): Json<Account>,
+    Json(body): Json<AccountLogin>,
 ) -> String {
     match handle_account_register_request(body, state) {
         Ok(_) => String::from("200"),
-        Err(_err) => String::from("400"),
+        Err(_err) => _err.to_string(),
     }
 }
 
 pub async fn get_account_login_request(
     State(state): State<ServerState>,
-    Json(body): Json<Account>,
-) -> String {
-    match handle_account_login_request(body, state) {
-        Ok(login) => String::from("200"),
-        Err(_err) => String::from("400"),
-    }
-}
-
-pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
-    serialized_string: &'a str,
-) -> anyhow::Result<T> {
-    Ok(serde_json::from_str::<T>(serialized_string)?)
-}
-
-use backend::schema::account;
-
-/// This function is going to write data to the database and return an ```anyhow::Result<usize>```
-/// If the query was unsuccessful or didnt find the user it will return ```Ok(usize)```, with the inner value being the nuber of rows inserted.
-/// If the query was successfull and found the user the client requested it will return an ```Error(_)```
-pub fn handle_account_register_request(request: Account, state: ServerState) -> anyhow::Result<usize> {
-    state
-        .pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_write()
-        .run(|conn| {
-            if let Ok(Some(_)) = account::dsl::account
-                .filter(username.eq(&request.username))
-                .first::<Account>(conn)
-                .optional()
-            {
-                bail!("User already exists.")
-            } else {
-                conn
-                    .transaction(|conn| insert_into(account::table).values(&request).execute(conn)).map_err(anyhow::Error::from)
-            }
-        })
-}
-
-/// This function is going to read data out of the database and return an ```anyhow::Result<Option<Account>>```
-/// If the query was unsuccessful or didnt find the user it will return an error.
-/// If the query was successfull and found the user the client requested it will return an ```Account```
-pub fn handle_account_login_request(
-    request: Account,
-    state: ServerState,
-) -> anyhow::Result<Account> {
-    state
-        .pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_only()
-        .run(|conn| {
-            conn.transaction(|conn| {
-                account::dsl::account
-                    .filter(username.eq(request.username))
-                    .first::<Account>(conn)
-            })
-        })
-        .map_err(anyhow::Error::from)
+    Json(body): Json<AccountLogin>,
+) -> Json<String> {
+    axum::Json(match handle_account_login_request(body, state) {
+        Ok(login) => login.to_string(),
+        Err(_err) => _err.to_string(),
+    })
 }

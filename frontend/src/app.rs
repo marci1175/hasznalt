@@ -1,5 +1,9 @@
+use std::str::FromStr;
+
 use frontend::{Button, NewAccount, TextField};
+use js_sys::JsString;
 use reqwest::Client;
+use web_sys::console;
 use yew::prelude::*;
 use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
 
@@ -95,7 +99,7 @@ pub fn login_page() -> Html {
                     let password_buffer = password_buffer.clone();
                     let username_buffer = username_buffer.clone();
                     wasm_bindgen_futures::spawn_local(async move {
-                        post_request
+                        let request = post_request
                             .header("Content-Type", "application/json")
                             .body(
                                 serde_json::to_string(&NewAccount {
@@ -106,6 +110,8 @@ pub fn login_page() -> Html {
                             .send()
                             .await
                             .unwrap();
+
+                        console::debug_1(&JsString::from_str(&request.text().await.unwrap()).unwrap());
                     });
                 })}/>
 
