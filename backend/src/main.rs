@@ -1,5 +1,3 @@
-use std::{fmt::Display, path::PathBuf};
-
 use axum::{
     extract::State,
     response::{Html, IntoResponse},
@@ -11,6 +9,7 @@ use backend::{
     handle_account_register_request, ServerState,
 };
 use reqwest::{Method, StatusCode};
+use std::path::PathBuf;
 use tokio::{fs, net::TcpListener};
 use tower::util::ServiceExt;
 use tower_http::{

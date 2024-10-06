@@ -5,5 +5,5 @@ use app::App;
 async fn main() {
     console_error_panic_hook::set_once();
 
-    let render = yew::Renderer::<App>::new().render();
+    yew::Renderer::<App>::new().render();
 }
