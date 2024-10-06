@@ -1,8 +1,10 @@
+// @generated automatically by Diesel CLI.
+
 diesel::table! {
-    account (username) {
+    accounts (id) {
+        username -> Varchar,
         id -> Int4,
-        username -> Text,
-        password -> Text,
-        created_at -> Timestamp,
+        passw -> Varchar,
+        created_at -> Date,
     }
 }

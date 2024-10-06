@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use axum::{
     extract::State,
@@ -6,7 +6,10 @@ use axum::{
     routing::{get, post},
     serve, Json, Router,
 };
-use backend::{client_type::AccountLogin, db_type::Account, establish_server_state, handle_account_login_request, handle_account_register_request, ServerState};
+use backend::{
+    client_type::AccountLogin, establish_server_state, handle_account_login_request,
+    handle_account_register_request, ServerState,
+};
 use reqwest::{Method, StatusCode};
 use tokio::{fs, net::TcpListener};
 use tower::util::ServiceExt;
@@ -70,7 +73,7 @@ pub async fn get_account_register_request(
     State(state): State<ServerState>,
     Json(body): Json<AccountLogin>,
 ) -> String {
-    match handle_account_register_request(body, state) {
+    match dbg!(handle_account_register_request(body, state)) {
         Ok(_) => String::from("200"),
         Err(_err) => _err.to_string(),
     }
@@ -80,7 +83,7 @@ pub async fn get_account_login_request(
     State(state): State<ServerState>,
     Json(body): Json<AccountLogin>,
 ) -> Json<String> {
-    axum::Json(match handle_account_login_request(body, state) {
+    axum::Json(match dbg!(handle_account_login_request(body, state)) {
         Ok(login) => login.to_string(),
         Err(_err) => _err.to_string(),
     })

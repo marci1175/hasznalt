@@ -1,8 +1,12 @@
 use anyhow::bail;
 use client_type::AccountLogin;
 use db_type::Account;
-use diesel::{dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl};
-use schema::account::{self, username};
+use diesel::{
+    dsl::{insert_into, Select},
+    Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
+    SelectableHelper,
+};
+use schema::accounts::{self, username};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
@@ -14,19 +18,21 @@ pub struct ServerState {
 }
 
 pub mod db_type {
-    use diesel::prelude::{Insertable, Queryable, QueryableByName};
+    use diesel::{
+        prelude::{Insertable, Queryable, QueryableByName},
+        Selectable,
+    };
     use serde::{Deserialize, Serialize};
 
-    use crate::schema::account;
+    use crate::schema::accounts;
 
-    #[derive(QueryableByName, Queryable, Insertable, Deserialize, Serialize, Clone)]
+    #[derive(QueryableByName, Selectable, Queryable, Insertable, Deserialize, Serialize, Clone, Debug)]
     #[diesel(check_for_backend(diesel::pg::Pg))]
-    #[diesel(table_name = account)]
+    #[diesel(table_name = accounts)]
     pub struct Account {
-        pub id: i32,
         pub username: String,
-        pub password: String,
-        pub created_at: chrono::NaiveDateTime,
+        pub passw: String,
+        pub created_at: chrono::NaiveDate,
     }
 
     impl ToString for Account {
@@ -34,7 +40,6 @@ pub mod db_type {
             serde_json::to_string(self).unwrap()
         }
     }
-
 }
 
 pub mod client_type {
@@ -50,7 +55,11 @@ pub mod client_type {
 
     impl AccountLogin {
         pub fn into_server_type(self) -> Account {
-            Account { id: 0, username: self.username.clone(), password: self.username.clone(), created_at: chrono::NaiveDateTime::default() }
+            Account {
+                username: self.username.clone(),
+                passw: self.username.clone(),
+                created_at: chrono::NaiveDate::default(),
+            }
         }
     }
 }
@@ -62,7 +71,6 @@ pub fn establish_server_state() -> anyhow::Result<ServerState> {
         pgconnection: Arc::new(Mutex::new(pgconnection)),
     })
 }
-
 
 pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
     serialized_string: &'a str,
@@ -84,15 +92,20 @@ pub fn handle_account_register_request(
         .build_transaction()
         .read_write()
         .run(|conn| {
-            if let Ok(Some(_)) = account::dsl::account
+            if let Ok(Some(_)) = accounts::dsl::accounts
                 .filter(username.eq(&request.username))
+                .select(Account::as_select())
                 .first::<Account>(conn)
                 .optional()
             {
                 bail!("User already exists.")
             } else {
-                conn.transaction(|conn| insert_into(account::table).values(&request.into_server_type()).execute(conn))
-                    .map_err(anyhow::Error::from)
+                conn.transaction(|conn| {
+                    insert_into(accounts::table)
+                        .values(&request.into_server_type())
+                        .execute(conn)
+                })
+                .map_err(anyhow::Error::from)
             }
         })
 }
@@ -112,8 +125,9 @@ pub fn handle_account_login_request(
         .read_only()
         .run(|conn| {
             conn.transaction(|conn| {
-                account::dsl::account
+                accounts::dsl::accounts
                     .filter(username.eq(request.username))
+                    .select(Account::as_select())
                     .first::<Account>(conn)
             })
         })

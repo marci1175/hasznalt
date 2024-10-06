@@ -1,0 +1,7 @@
+-- Your SQL goes here
+CREATE TABLE accounts (
+  username VARCHAR NOT NULL,
+  id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  passw VARCHAR NOT NULL,
+  created_at DATE NOT NULL DEFAULT NOW()
+)
