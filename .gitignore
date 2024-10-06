@@ -1,6 +1,5 @@
 /target/
 /target-trunk/
 /Cargo.lock
-/frontend/dist
+/frontend/dist/
 /.env
-/frontend/dist
