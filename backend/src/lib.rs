@@ -8,7 +8,7 @@ use diesel::{
     dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl, SelectableHelper,
 };
-use schema::accounts::{self, passw, username};
+use schema::accounts::{self, username};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
