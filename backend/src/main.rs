@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
     serve, Json, Router,
 };
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 use backend::{
     client_type::AccountLogin, establish_server_state, handle_account_login_request,
     handle_account_register_request, ServerState,
@@ -79,11 +80,21 @@ pub async fn get_account_register_request(
 }
 
 pub async fn get_account_login_request(
+    jar: CookieJar,
     State(state): State<ServerState>,
     Json(body): Json<AccountLogin>,
-) -> Json<String> {
-    axum::Json(match dbg!(handle_account_login_request(body, state)) {
-        Ok(login) => login.to_string(),
+) -> (CookieJar, Json<String>) {
+    let response = match dbg!(handle_account_login_request(body, state)) {
+        Ok(login) => {
+            login.to_string()
+        }
         Err(_err) => _err.to_string(),
-    })
+    };
+
+    (
+        jar.add(Cookie::new("name", "asd")),
+        axum::Json(
+            response
+        ),
+    )
 }

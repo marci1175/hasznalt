@@ -1,6 +1,7 @@
 use anyhow::bail;
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString}, Argon2, PasswordHash, PasswordHasher, PasswordVerifier
+    password_hash::{rand_core::OsRng, SaltString},
+    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
 use client_type::AccountLogin;
 use db_type::Account;
@@ -154,11 +155,16 @@ pub fn handle_account_login_request(
                     .filter(username.eq(request.username))
                     .select(Account::as_select())
                     //Check for password match
-                    .load(conn)?.into_iter().find(
-                        |account| {
-                            argon2.verify_password(request.password.as_bytes(), &PasswordHash::new(&account.passw).unwrap()).is_ok()
-                        }
-                    );
+                    .load(conn)?
+                    .into_iter()
+                    .find(|account| {
+                        argon2
+                            .verify_password(
+                                request.password.as_bytes(),
+                                &PasswordHash::new(&account.passw).unwrap(),
+                            )
+                            .is_ok()
+                    });
 
                 matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
             })
