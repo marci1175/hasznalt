@@ -4,7 +4,10 @@ use axum::{
     routing::{get, post},
     serve, Json, Router,
 };
-use axum_extra::extract::{cookie::Cookie, CookieJar};
+use axum_extra::extract::{
+    cookie::{self, Cookie, Expiration},
+    CookieJar,
+};
 use backend::{
     db_type::{Account, AuthorizedUser},
     establish_server_state, handle_account_login_request, handle_account_register_request,
@@ -91,10 +94,13 @@ pub async fn get_account_login_request(
     let account = handle_account_login_request(body, state).map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok((
-        jar.add(Cookie::new(
-            "session_id",
-            AuthorizedUser::from_account(&account, String::new()).to_string(),
-        )),
+        jar.add(
+            Cookie::build(Cookie::new(
+                "session_id",
+                AuthorizedUser::from_account(&account, String::new()).to_string(),
+            ))
+            .same_site(axum_extra::extract::cookie::SameSite::Strict),
+        ),
         axum::Json(account.to_string()),
     ))
 }
