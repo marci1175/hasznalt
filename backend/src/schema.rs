@@ -10,13 +10,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    authorized_cookies (session_id) {
-        client_signature -> Nullable<Text>,
+    authorized_users (session_id) {
+        client_signature -> Varchar,
         session_id -> Varchar,
+        account_hash -> Varchar,
     }
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
     accounts,
-    authorized_cookies,
+    authorized_users,
 );

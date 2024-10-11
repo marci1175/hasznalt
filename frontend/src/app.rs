@@ -103,7 +103,7 @@ pub fn login_page() -> Html {
                             .header("Content-Type", "application/json")
                             .body(
                                 serde_json::to_string(&NewAccount {
-                                    password: password_buffer.to_string(),
+                                    passw: password_buffer.to_string(),
                                     username: username_buffer.to_string(),
                                 }).unwrap()
                             )
@@ -157,7 +157,7 @@ pub fn register_page() -> Html {
                                 .header("Content-Type", "application/json")
                                 .body(
                                     serde_json::to_string(&NewAccount {
-                                        password: password_buffer.to_string(),
+                                        passw: password_buffer.to_string(),
                                         username: username_buffer.to_string(),
                                     }).unwrap()
                                 )

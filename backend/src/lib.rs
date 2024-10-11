@@ -3,7 +3,6 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
-use client_type::AccountLogin;
 use db_type::Account;
 use diesel::{
     dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
@@ -29,7 +28,7 @@ pub mod db_type {
     };
     use serde::{Deserialize, Serialize};
 
-    use crate::schema::accounts;
+    use crate::{hash_password, schema::{accounts, authorized_users}};
 
     #[derive(
         QueryableByName, Selectable, Queryable, Insertable, Deserialize, Serialize, Clone, Debug,
@@ -41,35 +40,38 @@ pub mod db_type {
         pub passw: String,
     }
 
+    impl Account {
+        /// This fucntion prepares this ```Account``` instance to be stored in a database.
+        /// Please note that the password get hashed via ```Argon2```
+        /// This function returns a result indicating the result of the hashing process
+        pub fn into_storable(&self) -> Account {
+            Account { username: self.username.clone(), passw: hash_password(self.passw.clone()).unwrap() }
+        }
+    }
+
     impl Display for Account {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(&serde_json::to_string(self).unwrap())
         }
     }
-}
 
-pub mod client_type {
-    use serde::{Deserialize, Serialize};
-
-    use crate::{db_type::Account, hash_password};
-
-    #[derive(Serialize, Deserialize)]
-    pub struct AccountLogin {
-        pub username: String,
-        pub password: String,
+    #[derive(
+        QueryableByName, Selectable, Queryable, Insertable, Deserialize, Serialize, Clone, Debug,
+    )]
+    #[diesel(check_for_backend(diesel::pg::Pg))]
+    #[diesel(table_name = authorized_users)]
+    pub struct AuthorizedUser {
+        client_signature: String,
+        session_id: String,
+        account_hash: String,
     }
 
-    impl AccountLogin {
-        /// This function creates an ```Accout``` from an ```AccountLogin```
-        /// Please note that the password get hashed via ```Argon2```, to safely store it
-        /// This function returns a result indicating the result of the hashing process
-        pub fn into_server_type(&self) -> anyhow::Result<Account> {
-            Ok(Account {
-                username: self.username.clone(),
-                passw: hash_password(self.password.clone())?,
-            })
+    impl Display for AuthorizedUser {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&serde_json::to_string(self).unwrap())
         }
     }
+
 }
 
 pub fn hash_password(password: String) -> anyhow::Result<String> {
@@ -103,11 +105,9 @@ pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
 /// If the query was unsuccessful or didnt find the user it will return ```Ok(usize)```, with the inner value being the nuber of rows inserted.
 /// If the query was successfull and found the user the client requested it will return an ```Error(_)```
 pub fn handle_account_register_request(
-    request: AccountLogin,
+    request: Account,
     state: ServerState,
 ) -> anyhow::Result<usize> {
-    let server_type_account = request.into_server_type()?;
-
     state
         .pgconnection
         .lock()
@@ -125,7 +125,7 @@ pub fn handle_account_register_request(
             } else {
                 conn.transaction(|conn| {
                     insert_into(accounts::table)
-                        .values(&server_type_account)
+                        .values(&request.into_storable())
                         .execute(conn)
                 })
                 .map_err(anyhow::Error::from)
@@ -137,7 +137,7 @@ pub fn handle_account_register_request(
 /// If the query was unsuccessful or didnt find the user it will return an error.
 /// If the query was successfull and found the user the client requested it will return an ```Account```
 pub fn handle_account_login_request(
-    request: AccountLogin,
+    request: Account,
     state: ServerState,
 ) -> anyhow::Result<Account> {
     let argon2 = Argon2::default();
@@ -160,7 +160,7 @@ pub fn handle_account_login_request(
                     .find(|account| {
                         argon2
                             .verify_password(
-                                request.password.as_bytes(),
+                                request.passw.as_bytes(),
                                 &PasswordHash::new(&account.passw).unwrap(),
                             )
                             .is_ok()

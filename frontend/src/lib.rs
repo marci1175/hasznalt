@@ -114,5 +114,5 @@ impl Component for Button {
 #[derive(Serialize)]
 pub struct NewAccount {
     pub username: String,
-    pub password: String,
+    pub passw: String,
 }
