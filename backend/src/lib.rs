@@ -28,7 +28,10 @@ pub mod db_type {
     };
     use serde::{Deserialize, Serialize};
 
-    use crate::{hash_password, schema::{accounts, authorized_users}};
+    use crate::{
+        hash_password,
+        schema::{accounts, authorized_users},
+    };
 
     #[derive(
         QueryableByName, Selectable, Queryable, Insertable, Deserialize, Serialize, Clone, Debug,
@@ -45,7 +48,10 @@ pub mod db_type {
         /// Please note that the password get hashed via ```Argon2```
         /// This function returns a result indicating the result of the hashing process
         pub fn into_storable(&self) -> Account {
-            Account { username: self.username.clone(), passw: hash_password(self.passw.clone()).unwrap() }
+            Account {
+                username: self.username.clone(),
+                passw: hash_password(self.passw.clone()).unwrap(),
+            }
         }
     }
 
@@ -56,7 +62,15 @@ pub mod db_type {
     }
 
     #[derive(
-        QueryableByName, Selectable, Queryable, Insertable, Deserialize, Serialize, Clone, Debug,
+        QueryableByName,
+        Selectable,
+        Queryable,
+        Insertable,
+        Deserialize,
+        Serialize,
+        Clone,
+        Debug,
+        Default,
     )]
     #[diesel(check_for_backend(diesel::pg::Pg))]
     #[diesel(table_name = authorized_users)]
@@ -66,12 +80,31 @@ pub mod db_type {
         account_hash: String,
     }
 
+    impl AuthorizedUser {
+        pub fn new() -> Self {
+            Self {
+                ..Default::default()
+            }
+        }
+
+        /// This function takes an ```Account``` and a ```client_sig``` and turns it into a ```Deserializeable``` ```AuthorizedUser``` instance.
+        /// This instance can be used to be store as a cookie.
+        pub fn from_account(account: &Account, client_sig: String) -> Self {
+            let uuid = uuid::Uuid::now_v7().to_string();
+
+            Self {
+                client_signature: client_sig,
+                session_id: uuid,
+                account_hash: sha256::digest(account.to_string()),
+            }
+        }
+    }
+
     impl Display for AuthorizedUser {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(&serde_json::to_string(self).unwrap())
         }
     }
-
 }
 
 pub fn hash_password(password: String) -> anyhow::Result<String> {

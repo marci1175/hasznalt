@@ -6,7 +6,9 @@ use axum::{
 };
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use backend::{
-    db_type::Account, establish_server_state, handle_account_login_request, handle_account_register_request, ServerState
+    db_type::{Account, AuthorizedUser},
+    establish_server_state, handle_account_login_request, handle_account_register_request,
+    ServerState,
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -86,9 +88,13 @@ pub async fn get_account_login_request(
     State(state): State<ServerState>,
     Json(body): Json<Account>,
 ) -> Result<(CookieJar, Json<String>), StatusCode> {
-    let account = handle_account_login_request(body, state).map_err(|_| StatusCode::NOT_FOUND)?; 
+    let account = handle_account_login_request(body, state).map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let uuid = uuid::Uuid::now_v7().to_string();
-
-    Ok((jar.add(Cookie::new("name", "asd")), axum::Json(account.to_string())))
+    Ok((
+        jar.add(Cookie::new(
+            "session_id",
+            AuthorizedUser::from_account(&account, String::new()).to_string(),
+        )),
+        axum::Json(account.to_string()),
+    ))
 }
