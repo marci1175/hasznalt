@@ -93,7 +93,7 @@ pub async fn get_account_login_request(
     Json(body): Json<Account>,
 ) -> Result<(CookieJar, Json<String>), StatusCode> {
     let account =
-        dbg!(handle_account_login_request(dbg!(body), state.clone()).map_err(|_| StatusCode::NOT_FOUND))?;
+        handle_account_login_request(body, state.clone()).map_err(|_| StatusCode::NOT_FOUND)?;
 
     let authorized_user = AuthorizedUser::from_account(&account, String::new());
 
@@ -102,7 +102,7 @@ pub async fn get_account_login_request(
 
     Ok((
         jar.add(
-            Cookie::build(Cookie::new("session_id", authorized_user.to_string())).domain("www.hasznalt.hu").permanent()
+            Cookie::build(Cookie::new("session_id", authorized_user.to_string())).permanent()
                 .same_site(axum_extra::extract::cookie::SameSite::Strict).build()
         ),
         axum::Json(account.to_string()),
