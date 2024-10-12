@@ -13,7 +13,7 @@ diesel::table! {
     authorized_users (session_id) {
         client_signature -> Varchar,
         session_id -> Varchar,
-        account_hash -> Varchar,
+        account_id -> Int4,
     }
 }
 

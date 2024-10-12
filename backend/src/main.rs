@@ -1,17 +1,16 @@
 use axum::{
-    extract::State,
+    extract::{Request, State},
+    middleware::{self, Next},
     response::{Html, IntoResponse},
     routing::{get, post},
     serve, Json, Router,
 };
-use axum_extra::extract::{
-    cookie::{self, Cookie, Expiration},
-    CookieJar,
-};
+use axum_extra::extract::{cookie::{Cookie, Expiration}, CookieJar};
 use backend::{
+    check_authenticated_account,
     db_type::{Account, AuthorizedUser},
     establish_server_state, handle_account_login_request, handle_account_register_request,
-    ServerState,
+    lookup_account_from_id, record_authenticated_account, ServerState,
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -61,11 +60,13 @@ async fn main() -> anyhow::Result<()> {
         /*
             Define api routes
         */
-        //ERROR
-        // .route("/*api", get(|| async { Redirect::permanent("/") }))
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
         .layer(cors)
+        // .layer(middleware::from_fn_with_state(
+        //     state.clone(),
+        //     login_persistence,
+        // ))
         .with_state(state);
 
     serve(listener, app).await?;
@@ -91,16 +92,46 @@ pub async fn get_account_login_request(
     State(state): State<ServerState>,
     Json(body): Json<Account>,
 ) -> Result<(CookieJar, Json<String>), StatusCode> {
-    let account = handle_account_login_request(body, state).map_err(|_| StatusCode::NOT_FOUND)?;
+    let account =
+        dbg!(handle_account_login_request(dbg!(body), state.clone()).map_err(|_| StatusCode::NOT_FOUND))?;
+
+    let authorized_user = AuthorizedUser::from_account(&account, String::new());
+
+    record_authenticated_account(&authorized_user, state.clone())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((
         jar.add(
-            Cookie::build(Cookie::new(
-                "session_id",
-                AuthorizedUser::from_account(&account, String::new()).to_string(),
-            ))
-            .same_site(axum_extra::extract::cookie::SameSite::Strict),
+            Cookie::build(Cookie::new("session_id", authorized_user.to_string())).domain("www.hasznalt.hu").permanent()
+                .same_site(axum_extra::extract::cookie::SameSite::Strict).build()
         ),
         axum::Json(account.to_string()),
     ))
+}
+
+async fn login_persistence(
+    jar: CookieJar,
+    State(state): State<ServerState>,
+    mut request: Request,
+    next: Next,
+) -> Result<impl IntoResponse, StatusCode> {
+    //Check if the user has already authenticated itself once
+    if let Some(session_id) = dbg!(jar).get("session_id") {
+        let authorized_user = serde_json::from_str::<AuthorizedUser>(session_id.value())
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+        //Validate cookie
+        if let Some(authenticated_user) =
+            check_authenticated_account(state.pgconnection.clone(), &authorized_user)?
+        {
+            *request.body_mut() =
+                Json(
+                    lookup_account_from_id(authenticated_user.account_id, state.clone())
+                        .map_err(|_| StatusCode::UNAUTHORIZED)?
+                ).to_string().into();
+            
+        }
+    }
+
+    Ok(next.run(request).await)
 }

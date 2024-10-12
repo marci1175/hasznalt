@@ -1,14 +1,18 @@
-use anyhow::bail;
+use anyhow::{bail, Error};
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
-use db_type::Account;
+use db_type::{Account, AccountLookup, AuthorizedUser};
 use diesel::{
     dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl, SelectableHelper,
 };
-use schema::accounts::{self, username};
+use reqwest::StatusCode;
+use schema::{
+    accounts::{self, username},
+    authorized_users::{self, account_id, session_id},
+};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
@@ -30,7 +34,10 @@ pub mod db_type {
 
     use crate::{
         hash_password,
-        schema::{accounts, authorized_users},
+        schema::{
+            accounts,
+            authorized_users::{self},
+        },
     };
 
     #[derive(
@@ -61,6 +68,22 @@ pub mod db_type {
         }
     }
 
+    #[derive(Queryable, Selectable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
+    #[diesel(check_for_backend(diesel::pg::Pg))]
+    #[diesel(table_name = accounts)]
+    pub struct AccountLookup {
+        pub username: String,
+        pub id: i32,
+        pub passw: String,
+        pub created_at: chrono::NaiveDate,
+    }
+
+    impl Display for AccountLookup {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&serde_json::to_string(self).unwrap())
+        }
+    }
+
     #[derive(
         QueryableByName,
         Selectable,
@@ -75,9 +98,9 @@ pub mod db_type {
     #[diesel(check_for_backend(diesel::pg::Pg))]
     #[diesel(table_name = authorized_users)]
     pub struct AuthorizedUser {
-        client_signature: String,
-        session_id: String,
-        account_hash: String,
+        pub client_signature: String,
+        pub session_id: String,
+        pub account_id: i32,
     }
 
     impl AuthorizedUser {
@@ -89,13 +112,13 @@ pub mod db_type {
 
         /// This function takes an ```Account``` and a ```client_sig``` and turns it into a ```Deserializeable``` ```AuthorizedUser``` instance.
         /// This instance can be used to be store as a cookie.
-        pub fn from_account(account: &Account, client_sig: String) -> Self {
-            let uuid = uuid::Uuid::now_v7().to_string();
+        pub fn from_account(account: &AccountLookup, client_sig: String) -> Self {
+            let session_id = uuid::Uuid::now_v7().to_string();
 
             Self {
                 client_signature: client_sig,
-                session_id: uuid,
-                account_hash: sha256::digest(account.to_string()),
+                session_id,
+                account_id: account.id,
             }
         }
     }
@@ -172,7 +195,7 @@ pub fn handle_account_register_request(
 pub fn handle_account_login_request(
     request: Account,
     state: ServerState,
-) -> anyhow::Result<Account> {
+) -> anyhow::Result<AccountLookup> {
     let argon2 = Argon2::default();
 
     state
@@ -183,21 +206,89 @@ pub fn handle_account_login_request(
         .read_only()
         .run(|conn| {
             conn.transaction(|conn| {
-                let matched_account = accounts::dsl::accounts
+                let matched_account: Option<AccountLookup> = accounts::dsl::accounts
                     //Check for username match
                     .filter(username.eq(request.username))
-                    .select(Account::as_select())
+                    .select(AccountLookup::as_select())
                     //Check for password match
                     .load(conn)?
                     .into_iter()
-                    .find(|account| {
+                    .find(|account_lookup| {
                         argon2
                             .verify_password(
                                 request.passw.as_bytes(),
-                                &PasswordHash::new(&account.passw).unwrap(),
+                                &PasswordHash::new(&account_lookup.passw).unwrap(),
                             )
                             .is_ok()
                     });
+
+                matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
+            })
+        })
+        .map_err(anyhow::Error::from)
+}
+
+pub fn record_authenticated_account(
+    authorized_user: &AuthorizedUser,
+    state: ServerState,
+) -> anyhow::Result<usize> {
+    state
+        .pgconnection
+        .lock()
+        .unwrap()
+        .build_transaction()
+        .read_write()
+        .run(move |conn| {
+            conn.transaction(|conn| {
+                insert_into(authorized_users::table)
+                    .values(authorized_user)
+                    .execute(conn)
+            })
+            .map_err(anyhow::Error::from)
+        })
+        .map_err(anyhow::Error::from)
+}
+
+pub fn check_authenticated_account(
+    pgconnection: Arc<std::sync::Mutex<PgConnection>>,
+    authorized_user: &AuthorizedUser,
+) -> Result<Option<AuthorizedUser>, StatusCode> {
+    pgconnection
+        .lock()
+        .unwrap()
+        .build_transaction()
+        .read_only()
+        .run(|conn| {
+            conn.transaction(|conn| {
+                let matched_authorized_account = authorized_users::dsl::authorized_users
+                    .filter(session_id.eq(authorized_user.session_id.clone()))
+                    .select(AuthorizedUser::as_select())
+                    .load(conn)?
+                    .into_iter()
+                    .find(|auth_user| {
+                        auth_user.client_signature == authorized_user.client_signature
+                            && auth_user.account_id == auth_user.account_id
+                    });
+
+                Ok(matched_authorized_account)
+            })
+        })
+        .map_err(|_: Error| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookup> {
+    state
+        .pgconnection
+        .lock()
+        .unwrap()
+        .build_transaction()
+        .read_only()
+        .run(move |conn| {
+            conn.transaction(|conn| {
+                let matched_account: Option<AccountLookup> = accounts::dsl::accounts
+                    .filter(accounts::dsl::id.eq(id))
+                    .first::<AccountLookup>(conn)
+                    .ok();
 
                 matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
             })
