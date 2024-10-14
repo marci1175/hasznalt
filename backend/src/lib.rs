@@ -77,7 +77,7 @@ pub mod db_type {
     #[diesel(check_for_backend(diesel::pg::Pg))]
     #[diesel(table_name = accounts)]
     /// This struct is used when returning ```Account``` instances from the database.
-    /// This struct contains fields which `PostgreSQL` would fill out automaticly.
+    /// This struct contains fields which `PostgreSQL` would fill out automatically.
     /// This should **NEVER** be used anywhere else than backend.
     pub struct __AccountLookupUnsafe {
         /// The username of the requested user
@@ -192,7 +192,7 @@ pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
 
 /// This function is going to write data to the database and return an ```anyhow::Result<usize>```
 /// If the query was unsuccessful or didnt find the user it will return ```Ok(usize)```, with the inner value being the nuber of rows inserted.
-/// If the query was successfull and found the user the client requested it will return an ```Error(_)```
+/// If the query was successful and found the user the client requested it will return an ```Error(_)```
 pub fn handle_account_register_request(
     request: Account,
     state: ServerState,
@@ -224,7 +224,7 @@ pub fn handle_account_register_request(
 
 /// This function is going to read data out of the database and return an ```anyhow::Result<Option<Account>>```
 /// If the query was unsuccessful or didnt find the user it will return an error.
-/// If the query was successfull and found the user the client requested it will return an ```Account```
+/// If the query was successful and found the user the client requested it will return an ```Account```
 pub fn handle_account_login_request(
     request: Account,
     state: ServerState,
@@ -261,7 +261,7 @@ pub fn handle_account_login_request(
         .map_err(anyhow::Error::from)
 }
 
-/// This function takes an ```&AuthorizedUser``` instance which it writes to the database, so that it can be accessed later to authentciate the user
+/// This function takes an ```&AuthorizedUser``` instance which it writes to the database, so that it can be accessed later to authenticate the user
 pub fn record_authenticated_account(
     authorized_user: &AuthorizedUser,
     state: ServerState,
@@ -283,7 +283,7 @@ pub fn record_authenticated_account(
         .map_err(anyhow::Error::from)
 }
 
-/// This function takes an ```&AuthorizedUser``` instance which it check for in the database, so it authentciate the user
+/// This function takes an ```&AuthorizedUser``` instance which it check for in the database, so it authenticate the user
 pub fn check_authenticated_account(
     pgconnection: Arc<std::sync::Mutex<PgConnection>>,
     authorized_user: &AuthorizedUser,
@@ -336,7 +336,7 @@ pub fn __lookup_account_from_id_unsafe(
         .map_err(anyhow::Error::from)
 }
 
-/// This function looks up the public infromation of an account based on their UUID.
+/// This function looks up the public information of an account based on their UUID.
 /// This function will return an error if the user doesnt exist.
 pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookupSafe> {
     state

@@ -79,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// This function will register a new account depending on the request it takes.
-/// It can either return ```StatusCode::CREATED```: When the account has been successfully registered
+/// It can either return ```StatusCode::CREATED```: When the account has been successfuly registered
 /// Or return ```StatusCode::FOUND```: When the account has been already registered, thus it will not create another one
 pub async fn get_account_register_request(
     State(state): State<ServerState>,
