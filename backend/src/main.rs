@@ -63,10 +63,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
         .layer(cors)
-        // .layer(middleware::from_fn_with_state(
-        //     state.clone(),
-        //     login_persistence,
-        // ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            login_persistence,
+        ))
         .with_state(state);
 
     serve(listener, app).await?;
@@ -103,7 +103,9 @@ pub async fn get_account_login_request(
     Ok((
         jar.add(
             Cookie::build(Cookie::new("session_id", authorized_user.to_string())).permanent()
-                .same_site(axum_extra::extract::cookie::SameSite::Strict).build()
+            .path("/")
+                .http_only(false)
+                .same_site(axum_extra::extract::cookie::SameSite::Lax).build()
         ),
         axum::Json(account.to_string()),
     ))
@@ -112,11 +114,11 @@ pub async fn get_account_login_request(
 async fn login_persistence(
     jar: CookieJar,
     State(state): State<ServerState>,
-    mut request: Request,
+    request: Request,
     next: Next,
 ) -> Result<impl IntoResponse, StatusCode> {
     //Check if the user has already authenticated itself once
-    if let Some(session_id) = dbg!(jar).get("session_id") {
+    if let Some(session_id) = jar.get("session_id") {
         let authorized_user = serde_json::from_str::<AuthorizedUser>(session_id.value())
             .map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -124,12 +126,7 @@ async fn login_persistence(
         if let Some(authenticated_user) =
             check_authenticated_account(state.pgconnection.clone(), &authorized_user)?
         {
-            *request.body_mut() =
-                Json(
-                    lookup_account_from_id(authenticated_user.account_id, state.clone())
-                        .map_err(|_| StatusCode::UNAUTHORIZED)?
-                ).to_string().into();
-            
+            dbg!(lookup_account_from_id(authenticated_user.account_id, state.clone()).unwrap());
         }
     }
 

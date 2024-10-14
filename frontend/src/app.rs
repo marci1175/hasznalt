@@ -1,9 +1,9 @@
 use std::str::FromStr;
-
+use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use frontend::{Button, NewAccount, TextField};
-use js_sys::JsString;
+use js_sys::{wasm_bindgen, JsString};
 use reqwest::Client;
-use web_sys::console;
+use web_sys::{console::{self, debug_1}, window, HtmlDocument};
 use yew::prelude::*;
 use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
 
@@ -43,23 +43,45 @@ pub fn main_page() -> Html {
     html! {
         <>
             <div id="navigation">
-                <Button label={
-                    "Regisztráció"
-                } callback={
-                    let navigator = navigator.clone();
-                    Callback::from(move |_| {
-                        navigator.push(&Route::Register);
-                    })
-                }/>
-
-                <Button label={
-                    "Bejelentkezés"
-                } callback={
-                    let navigator = navigator.clone();
-                    Callback::from(move |_| {
-                        navigator.push(&Route::Login);
-                    })
-                }/>
+                {{
+                    {
+                        debug_1(&JsValue::from_str(&format!("{:?}", get_cookie("session_id"))));
+                    }
+                    if let Some(cookie_value) = get_cookie("session_id") {
+                        html!(<>
+                            <Button label={
+                                "Fiókom"
+                            } callback={
+                                let navigator = navigator.clone();
+                                Callback::from(move |_| {
+                                    
+                                })
+                            }/>
+                            <h5>{cookie_value}</h5>
+                            </>)
+                    }
+                    else {
+                        html!(<>
+                            <Button label={
+                                "Regisztráció"
+                            } callback={
+                                let navigator = navigator.clone();
+                                Callback::from(move |_| {
+                                    navigator.push(&Route::Register);
+                                })
+                            }/>
+            
+                            <Button label={
+                                "Bejelentkezés"
+                            } callback={
+                                let navigator = navigator.clone();
+                                Callback::from(move |_| {
+                                    navigator.push(&Route::Login);
+                                })
+                            }/>
+                            </>)
+                    }
+                }}
             </div>
 
             <div id="main_search">
@@ -136,7 +158,7 @@ pub fn register_page() -> Html {
     let password_title = use_state(|| String::from("Jelszó"));
     let username_buffer = use_state(String::new);
     let password_buffer = use_state(String::new);
-
+    
     html!(
         <>
             <div id="register_area">
@@ -170,4 +192,16 @@ pub fn register_page() -> Html {
             </div>
         </>
     )
+}
+
+pub fn get_cookie(name: &str) -> Option<String> {
+    let window = window()?;
+    
+    let document = window.document()?;
+
+    let html_document: HtmlDocument = document.dyn_into().ok()?;
+
+    let cookies = html_document.cookie().ok()?;
+    debug_1(&JsValue::from_str(&format!("Cookies: {cookies}")));
+    wasm_cookies::cookies::get(&cookies, name)?.ok()
 }

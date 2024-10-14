@@ -12,7 +12,7 @@ js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1.7"
-diesel = {version = "2.2.4", features = ["postgres", "chrono"] }
+diesel = {version = "2.2.4", features = ["postgres", "chrono", "r2d2"] }
 dotenvy = "0.15"
 axum = {version = "0.7.5", features = ["http2", "ws"]}
 tokio = {version = "1.40.0", features = ["full"]}
@@ -29,3 +29,4 @@ argon2 = "0.5.3"
 axum-extra = {version = "0.9.4", features = ["cookie", "cookie-private", "cookie-signed"]}
 uuid = {version = "1.10.0", features = ["v7"]}
 sha256 = "1.5.0"
+jwt = "0.16.0"
