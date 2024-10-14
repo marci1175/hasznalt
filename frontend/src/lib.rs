@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use web_sys::HtmlTextAreaElement;
 use yew::html;
 use yew::{
@@ -115,4 +115,11 @@ impl Component for Button {
 pub struct NewAccount {
     pub username: String,
     pub passw: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AuthorizedUser {
+    pub client_signature: String,
+    pub session_id: String,
+    pub account_id: i32,
 }

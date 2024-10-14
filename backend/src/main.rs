@@ -5,10 +5,13 @@ use axum::{
     routing::{get, post},
     serve, Json, Router,
 };
-use axum_extra::extract::{cookie::{Cookie, Expiration}, CookieJar};
+use axum_extra::extract::{
+    cookie::{Cookie, Expiration},
+    CookieJar,
+};
 use backend::{
     check_authenticated_account,
-    db_type::{Account, AuthorizedUser},
+    db_type::{Account, AuthorizedUser, __AccountLookupUnsafe},
     establish_server_state, handle_account_login_request, handle_account_register_request,
     lookup_account_from_id, record_authenticated_account, ServerState,
 };
@@ -62,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
         */
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
+        .route("/api/account", post(get_account_login_request))
         .layer(cors)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -102,10 +106,12 @@ pub async fn get_account_login_request(
 
     Ok((
         jar.add(
-            Cookie::build(Cookie::new("session_id", authorized_user.to_string())).permanent()
-            .path("/")
+            Cookie::build(Cookie::new("session_id", authorized_user.to_string()))
+                .permanent()
+                .path("/")
                 .http_only(false)
-                .same_site(axum_extra::extract::cookie::SameSite::Lax).build()
+                .same_site(axum_extra::extract::cookie::SameSite::Lax)
+                .build(),
         ),
         axum::Json(account.to_string()),
     ))

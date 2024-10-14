@@ -1,13 +1,16 @@
-use std::str::FromStr;
-use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
-use frontend::{Button, NewAccount, TextField};
+use frontend::{AuthorizedUser, Button, NewAccount, TextField};
 use js_sys::{wasm_bindgen, JsString};
 use reqwest::Client;
-use web_sys::{console::{self, debug_1}, window, HtmlDocument};
+use std::str::FromStr;
+use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
+use web_sys::{
+    console::{self, debug_1},
+    window, HtmlDocument,
+};
 use yew::prelude::*;
-use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
+use yew_router::{hooks::use_navigator, prelude::Redirect, BrowserRouter, Routable, Switch};
 
-#[derive(Routable, Clone, Copy, PartialEq)]
+#[derive(Routable, Clone, PartialEq)]
 enum Route {
     #[at("/")]
     MainPage,
@@ -15,6 +18,8 @@ enum Route {
     Register,
     #[at("/login")]
     Login,
+    #[at("/account/:id")]
+    Account { id: i32 },
 }
 
 fn switch(routes: Route) -> Html {
@@ -22,6 +27,7 @@ fn switch(routes: Route) -> Html {
         Route::MainPage => html! { <Main /> },
         Route::Register => html! { <Register /> },
         Route::Login => html! { <Login /> },
+        Route::Account { id } => html! { id },
     }
 }
 
@@ -43,22 +49,22 @@ pub fn main_page() -> Html {
     html! {
         <>
             <div id="navigation">
-                {{
-                    {
-                        debug_1(&JsValue::from_str(&format!("{:?}", get_cookie("session_id"))));
-                    }
+                {
                     if let Some(cookie_value) = get_cookie("session_id") {
-                        html!(<>
-                            <Button label={
-                                "Fiókom"
-                            } callback={
-                                let navigator = navigator.clone();
-                                Callback::from(move |_| {
-                                    
-                                })
-                            }/>
-                            <h5>{cookie_value}</h5>
-                            </>)
+                        let cookie_struct = serde_json::from_str::<AuthorizedUser>(&cookie_value).unwrap();
+                        html!(
+                            <>
+                                <h5>{ format!("Bejelentkezve mint, {}", cookie_struct.account_id) }</h5>
+                                <Button label={ "Fiókom" }
+                                    callback={
+                                        let navigator = navigator.clone();
+                                        Callback::from(move |_| {
+                                            navigator.push(&Route::Account { id: cookie_struct.account_id });
+                                        })
+                                    }
+                                />
+                            </>
+                        )
                     }
                     else {
                         html!(<>
@@ -70,7 +76,7 @@ pub fn main_page() -> Html {
                                     navigator.push(&Route::Register);
                                 })
                             }/>
-            
+
                             <Button label={
                                 "Bejelentkezés"
                             } callback={
@@ -81,7 +87,7 @@ pub fn main_page() -> Html {
                             }/>
                             </>)
                     }
-                }}
+                }
             </div>
 
             <div id="main_search">
@@ -158,7 +164,7 @@ pub fn register_page() -> Html {
     let password_title = use_state(|| String::from("Jelszó"));
     let username_buffer = use_state(String::new);
     let password_buffer = use_state(String::new);
-    
+
     html!(
         <>
             <div id="register_area">
@@ -196,12 +202,12 @@ pub fn register_page() -> Html {
 
 pub fn get_cookie(name: &str) -> Option<String> {
     let window = window()?;
-    
+
     let document = window.document()?;
 
     let html_document: HtmlDocument = document.dyn_into().ok()?;
 
     let cookies = html_document.cookie().ok()?;
-    debug_1(&JsValue::from_str(&format!("Cookies: {cookies}")));
+
     wasm_cookies::cookies::get(&cookies, name)?.ok()
 }

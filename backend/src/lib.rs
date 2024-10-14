@@ -3,7 +3,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
-use db_type::{Account, AccountLookup, AuthorizedUser};
+use db_type::{Account, AccountLookupSafe, AuthorizedUser, __AccountLookupUnsafe};
 use diesel::{
     dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl, SelectableHelper,
@@ -45,8 +45,13 @@ pub mod db_type {
     )]
     #[diesel(check_for_backend(diesel::pg::Pg))]
     #[diesel(table_name = accounts)]
+    /// This struct is used when there are incoming requests from clients.
+    /// This is a common message for clients to request logging in.
     pub struct Account {
+        /// The username of the account the user wants to log in
         pub username: String,
+        /// The password of the account the user wants to log in
+        /// This field contains the password in plaintext as it is only hashed on the serverside to prevent MITM attacks.
         pub passw: String,
     }
 
@@ -57,7 +62,7 @@ pub mod db_type {
         pub fn into_storable(&self) -> Account {
             Account {
                 username: self.username.clone(),
-                passw: hash_password(self.passw.clone()).unwrap(),
+                passw: hash_password(&self.passw).unwrap(),
             }
         }
     }
@@ -71,14 +76,21 @@ pub mod db_type {
     #[derive(Queryable, Selectable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
     #[diesel(check_for_backend(diesel::pg::Pg))]
     #[diesel(table_name = accounts)]
-    pub struct AccountLookup {
+    /// This struct is used when returning ```Account``` instances from the database.
+    /// This struct contains fields which `PostgreSQL` would fill out automaticly.
+    /// This should **NEVER** be used anywhere else than backend.
+    pub struct __AccountLookupUnsafe {
+        /// The username of the requested user
         pub username: String,
+        /// The UUID of the requested user
         pub id: i32,
+        /// The `Argon2` hashed password of the requested user
         pub passw: String,
+        /// The timestamp taken when the account was created
         pub created_at: chrono::NaiveDate,
     }
 
-    impl Display for AccountLookup {
+    impl Display for __AccountLookupUnsafe {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(&serde_json::to_string(self).unwrap())
         }
@@ -97,22 +109,22 @@ pub mod db_type {
     )]
     #[diesel(check_for_backend(diesel::pg::Pg))]
     #[diesel(table_name = authorized_users)]
+    /// This struct is used when returning a cookie to the user who has logged in.
+    /// This struct is stored as a cookie, and is a way of maintaining the logged in state.
+    /// This cookie should never be shared
     pub struct AuthorizedUser {
+        /// 0th Authentication for the logged in user / owner of the cookie
         pub client_signature: String,
+        /// Session id of the cookie owner, the account paired to this session id can be looked up in the database
         pub session_id: String,
+        /// The UUID of the account which this session id is linked to
         pub account_id: i32,
     }
 
     impl AuthorizedUser {
-        pub fn new() -> Self {
-            Self {
-                ..Default::default()
-            }
-        }
-
         /// This function takes an ```Account``` and a ```client_sig``` and turns it into a ```Deserializeable``` ```AuthorizedUser``` instance.
         /// This instance can be used to be store as a cookie.
-        pub fn from_account(account: &AccountLookup, client_sig: String) -> Self {
+        pub fn from_account(account: &__AccountLookupUnsafe, client_sig: String) -> Self {
             let session_id = uuid::Uuid::now_v7().to_string();
 
             Self {
@@ -128,9 +140,28 @@ pub mod db_type {
             f.write_str(&serde_json::to_string(self).unwrap())
         }
     }
+
+    #[derive(Queryable, Selectable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
+    #[diesel(check_for_backend(diesel::pg::Pg))]
+    #[diesel(table_name = accounts)]
+    pub struct AccountLookupSafe {
+        /// The username of the requested user
+        pub username: String,
+        /// The UUID of the requested user
+        pub id: i32,
+        /// The timestamp taken when the account was created
+        pub created_at: chrono::NaiveDate,
+    }
+
+    impl Display for AccountLookupSafe {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&serde_json::to_string(self).unwrap())
+        }
+    }
 }
 
-pub fn hash_password(password: String) -> anyhow::Result<String> {
+/// This function takes a password argument which it hashes with ```Argon2``` via the default hasher settings.
+pub fn hash_password(password: &str) -> anyhow::Result<String> {
     //Create argon2 hasher instance
     let argon2 = argon2::Argon2::default();
 
@@ -143,7 +174,9 @@ pub fn hash_password(password: String) -> anyhow::Result<String> {
         .to_string())
 }
 
+/// This function establishes the ```ServerState``` instance
 pub fn establish_server_state() -> anyhow::Result<ServerState> {
+    // Connenct to Database
     let pgconnection = diesel::PgConnection::establish(include_str!("..\\..\\.env"))?;
 
     Ok(ServerState {
@@ -195,7 +228,7 @@ pub fn handle_account_register_request(
 pub fn handle_account_login_request(
     request: Account,
     state: ServerState,
-) -> anyhow::Result<AccountLookup> {
+) -> anyhow::Result<__AccountLookupUnsafe> {
     let argon2 = Argon2::default();
 
     state
@@ -206,10 +239,10 @@ pub fn handle_account_login_request(
         .read_only()
         .run(|conn| {
             conn.transaction(|conn| {
-                let matched_account: Option<AccountLookup> = accounts::dsl::accounts
+                let matched_account: Option<__AccountLookupUnsafe> = accounts::dsl::accounts
                     //Check for username match
                     .filter(username.eq(request.username))
-                    .select(AccountLookup::as_select())
+                    .select(__AccountLookupUnsafe::as_select())
                     //Check for password match
                     .load(conn)?
                     .into_iter()
@@ -228,6 +261,7 @@ pub fn handle_account_login_request(
         .map_err(anyhow::Error::from)
 }
 
+/// This function takes an ```&AuthorizedUser``` instance which it writes to the database, so that it can be accessed later to authentciate the user
 pub fn record_authenticated_account(
     authorized_user: &AuthorizedUser,
     state: ServerState,
@@ -249,6 +283,7 @@ pub fn record_authenticated_account(
         .map_err(anyhow::Error::from)
 }
 
+/// This function takes an ```&AuthorizedUser``` instance which it check for in the database, so it authentciate the user
 pub fn check_authenticated_account(
     pgconnection: Arc<std::sync::Mutex<PgConnection>>,
     authorized_user: &AuthorizedUser,
@@ -276,7 +311,12 @@ pub fn check_authenticated_account(
         .map_err(|_: Error| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookup> {
+/// This function looks up the full account information and returns an ```__AccountLookupUnsafe``` instance.
+/// Please note that this function should **NEVER** be used to return data to anywhere other then backend.
+pub fn __lookup_account_from_id_unsafe(
+    id: i32,
+    state: ServerState,
+) -> anyhow::Result<__AccountLookupUnsafe> {
     state
         .pgconnection
         .lock()
@@ -285,9 +325,32 @@ pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<Acc
         .read_only()
         .run(move |conn| {
             conn.transaction(|conn| {
-                let matched_account: Option<AccountLookup> = accounts::dsl::accounts
+                let matched_account: Option<__AccountLookupUnsafe> = accounts::dsl::accounts
                     .filter(accounts::dsl::id.eq(id))
-                    .first::<AccountLookup>(conn)
+                    .first::<__AccountLookupUnsafe>(conn)
+                    .ok();
+
+                matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
+            })
+        })
+        .map_err(anyhow::Error::from)
+}
+
+/// This function looks up the public infromation of an account based on their UUID.
+/// This function will return an error if the user doesnt exist.
+pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookupSafe> {
+    state
+        .pgconnection
+        .lock()
+        .unwrap()
+        .build_transaction()
+        .read_only()
+        .run(move |conn| {
+            conn.transaction(|conn| {
+                let matched_account: Option<AccountLookupSafe> = accounts::dsl::accounts
+                    .filter(accounts::dsl::id.eq(id))
+                    .select(AccountLookupSafe::as_select())
+                    .first(conn)
                     .ok();
 
                 matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))

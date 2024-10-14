@@ -92,7 +92,7 @@ h2 {
 #navigation {
   display: flex;
   justify-content: end;
-  align-items: flex-end;
+  align-items: center;
   gap: 20px;
   font-size: small;
   font-variant-caps: titling-caps;
