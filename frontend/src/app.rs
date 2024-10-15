@@ -1,8 +1,12 @@
-use frontend::{AuthorizedUser, Button, NewAccount, TextField};
+use frontend::{
+    AccountLookup, AccountPageProperties, AuthorizedUser, Button, NewAccount, TextField,
+};
 use js_sys::{wasm_bindgen, JsString};
 use reqwest::Client;
+use serde_json::Value;
 use std::str::FromStr;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen_futures::spawn_local;
 use web_sys::{
     console::{self},
     window, HtmlDocument,
@@ -27,7 +31,7 @@ fn switch(routes: Route) -> Html {
         Route::MainPage => html! { <Main /> },
         Route::Register => html! { <Register /> },
         Route::Login => html! { <Login /> },
-        Route::Account { id } => html! { id },
+        Route::Account { id } => html! { <Account id={id}/> },
     }
 }
 
@@ -210,4 +214,40 @@ pub fn get_cookie(name: &str) -> Option<String> {
     let cookies = html_document.cookie().ok()?;
 
     wasm_cookies::cookies::get(&cookies, name)?.ok()
+}
+
+#[function_component(Account)]
+pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Html {
+    let requested_account = use_state_eq(|| AccountLookup::default());
+
+    let id_clone = id.clone();
+    
+    let requested_account_clone = requested_account.clone();
+
+    spawn_local(async move {
+        let client = Client::new();
+
+        let post_request = client.post("http://[::1]:3004/api/account");
+
+        let response = post_request
+            .header("Content-Type", "application/json")
+            .body(id_clone.to_string())
+            .send()
+            .await
+            .unwrap();
+
+        let server_response = response.text().await.unwrap();
+
+        requested_account_clone.set(serde_json::from_str::<AccountLookup>(&server_response).unwrap());
+    });
+    
+    html!(
+        <div id="username_title">
+            <center>
+                <h1>
+                    { requested_account.username.clone() }
+                </h1>
+            </center>
+        </div>
+    )
 }

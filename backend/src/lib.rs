@@ -3,7 +3,10 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
-use db_type::{safe_types::AccountLookup, unsafe_types::{self, Account, AuthorizedUser}};
+use db_types::{
+    safe_types::AccountLookup,
+    unsafe_types::{self, Account, AuthorizedUser},
+};
 use diesel::{
     dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl, SelectableHelper,
@@ -23,7 +26,7 @@ pub struct ServerState {
     pub pgconnection: Arc<Mutex<PgConnection>>,
 }
 
-pub mod db_type {
+pub mod db_types {
     use std::fmt::Display;
 
     use diesel::{
@@ -41,7 +44,7 @@ pub mod db_type {
     };
 
     pub mod unsafe_types {
-        use crate::db_type::*;
+        use crate::db_types::*;
 
         #[derive(
             QueryableByName, Selectable, Queryable, Insertable, Deserialize, Serialize, Clone, Debug,
@@ -57,7 +60,7 @@ pub mod db_type {
             /// This field contains the password in plaintext as it is only hashed on the serverside to prevent MITM attacks.
             pub passw: String,
         }
-    
+
         impl Account {
             /// This fucntion prepares this ```Account``` instance to be stored in a database.
             /// Please note that the password get hashed via ```Argon2```
@@ -69,13 +72,13 @@ pub mod db_type {
                 }
             }
         }
-    
+
         impl Display for Account {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.write_str(&serde_json::to_string(self).unwrap())
             }
         }
-    
+
         #[derive(Queryable, Selectable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
         #[diesel(check_for_backend(diesel::pg::Pg))]
         #[diesel(table_name = accounts)]
@@ -92,13 +95,13 @@ pub mod db_type {
             /// The timestamp taken when the account was created
             pub created_at: chrono::NaiveDate,
         }
-    
+
         impl Display for AccountLookup {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.write_str(&serde_json::to_string(self).unwrap())
             }
         }
-    
+
         #[derive(
             QueryableByName,
             Selectable,
@@ -123,13 +126,13 @@ pub mod db_type {
             /// The UUID of the account which this session id is linked to
             pub account_id: i32,
         }
-    
+
         impl AuthorizedUser {
             /// This function takes an ```Account``` and a ```client_sig``` and turns it into a ```Deserializeable``` ```AuthorizedUser``` instance.
             /// This instance can be used to be store as a cookie.
             pub fn from_account(account: &AccountLookup, client_sig: String) -> Self {
                 let session_id = uuid::Uuid::now_v7().to_string();
-    
+
                 Self {
                     client_signature: client_sig,
                     session_id,
@@ -137,7 +140,7 @@ pub mod db_type {
                 }
             }
         }
-    
+
         impl Display for AuthorizedUser {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.write_str(&serde_json::to_string(self).unwrap())
@@ -145,8 +148,8 @@ pub mod db_type {
         }
     }
 
-    pub(crate) mod safe_types {
-        use crate::db_type::*;
+    pub mod safe_types {
+        use crate::db_types::*;
 
         #[derive(Queryable, Selectable, QueryableByName, Serialize, Deserialize, Clone, Debug)]
         #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -198,7 +201,6 @@ pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
     Ok(serde_json::from_str::<T>(serialized_string)?)
 }
 
-
 pub mod unsafe_functions {
     use crate::*;
 
@@ -216,9 +218,36 @@ pub mod unsafe_functions {
             .read_only()
             .run(move |conn| {
                 conn.transaction(|conn| {
-                    let matched_account: Option<unsafe_types::AccountLookup> = accounts::dsl::accounts
+                    let matched_account: Option<unsafe_types::AccountLookup> =
+                        accounts::dsl::accounts
+                            .filter(accounts::dsl::id.eq(id))
+                            .first::<unsafe_types::AccountLookup>(conn)
+                            .ok();
+
+                    matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
+                })
+            })
+            .map_err(anyhow::Error::from)
+    }
+}
+
+pub mod safe_functions {
+    use crate::*;
+    /// This function looks up the public information of an account based on their UUID.
+    /// This function will return an error if the user doesnt exist.
+    pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookup> {
+        state
+            .pgconnection
+            .lock()
+            .unwrap()
+            .build_transaction()
+            .read_only()
+            .run(move |conn| {
+                conn.transaction(|conn| {
+                    let matched_account: Option<AccountLookup> = accounts::dsl::accounts
                         .filter(accounts::dsl::id.eq(id))
-                        .first::<unsafe_types::AccountLookup>(conn)
+                        .select(AccountLookup::as_select())
+                        .first(conn)
                         .ok();
 
                     matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
@@ -227,152 +256,125 @@ pub mod unsafe_functions {
             .map_err(anyhow::Error::from)
     }
 
-}
-
-pub mod safe_functions {
-    use crate::*;
-    /// This function looks up the public information of an account based on their UUID.
-/// This function will return an error if the user doesnt exist.
-pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookup> {
-    state
-        .pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_only()
-        .run(move |conn| {
-            conn.transaction(|conn| {
-                let matched_account: Option<AccountLookup> = accounts::dsl::accounts
-                    .filter(accounts::dsl::id.eq(id))
-                    .select(AccountLookup::as_select())
-                    .first(conn)
-                    .ok();
-
-                matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
+    /// This function is going to write data to the database and return an ```anyhow::Result<usize>```
+    /// If the query was unsuccessful or didnt find the user it will return ```Ok(usize)```, with the inner value being the nuber of rows inserted.
+    /// If the query was successful and found the user the client requested it will return an ```Error(_)```
+    pub fn handle_account_register_request(
+        request: Account,
+        state: ServerState,
+    ) -> anyhow::Result<usize> {
+        state
+            .pgconnection
+            .lock()
+            .unwrap()
+            .build_transaction()
+            .read_write()
+            .run(move |conn| {
+                if let Ok(Some(_)) = accounts::dsl::accounts
+                    .filter(username.eq(&request.username))
+                    .select(Account::as_select())
+                    .first::<Account>(conn)
+                    .optional()
+                {
+                    bail!("User already exists.")
+                } else {
+                    conn.transaction(|conn| {
+                        insert_into(accounts::table)
+                            .values(&request.into_storable())
+                            .execute(conn)
+                    })
+                    .map_err(anyhow::Error::from)
+                }
             })
-        })
-        .map_err(anyhow::Error::from)
-}
-/// This function is going to write data to the database and return an ```anyhow::Result<usize>```
-/// If the query was unsuccessful or didnt find the user it will return ```Ok(usize)```, with the inner value being the nuber of rows inserted.
-/// If the query was successful and found the user the client requested it will return an ```Error(_)```
-pub fn handle_account_register_request(
-    request: Account,
-    state: ServerState,
-) -> anyhow::Result<usize> {
-    state
-        .pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_write()
-        .run(move |conn| {
-            if let Ok(Some(_)) = accounts::dsl::accounts
-                .filter(username.eq(&request.username))
-                .select(Account::as_select())
-                .first::<Account>(conn)
-                .optional()
-            {
-                bail!("User already exists.")
-            } else {
+    }
+
+    /// This function is going to read data out of the database and return an ```anyhow::Result<Option<Account>>```
+    /// If the query was unsuccessful or didnt find the user it will return an error.
+    /// If the query was successful and found the user the client requested it will return an ```Account```
+    pub fn handle_account_login_request(
+        request: Account,
+        state: ServerState,
+    ) -> anyhow::Result<unsafe_types::AccountLookup> {
+        let argon2 = Argon2::default();
+
+        state
+            .pgconnection
+            .lock()
+            .unwrap()
+            .build_transaction()
+            .read_only()
+            .run(|conn| {
                 conn.transaction(|conn| {
-                    insert_into(accounts::table)
-                        .values(&request.into_storable())
+                    let matched_account: Option<unsafe_types::AccountLookup> =
+                        accounts::dsl::accounts
+                            //Check for username match
+                            .filter(username.eq(request.username))
+                            .select(unsafe_types::AccountLookup::as_select())
+                            //Check for password match
+                            .load(conn)?
+                            .into_iter()
+                            .find(|account_lookup| {
+                                argon2
+                                    .verify_password(
+                                        request.passw.as_bytes(),
+                                        &PasswordHash::new(&account_lookup.passw).unwrap(),
+                                    )
+                                    .is_ok()
+                            });
+
+                    matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
+                })
+            })
+            .map_err(anyhow::Error::from)
+    }
+
+    /// This function takes an ```&AuthorizedUser``` instance which it writes to the database, so that it can be accessed later to authenticate the user
+    pub fn record_authenticated_account(
+        authorized_user: &AuthorizedUser,
+        state: ServerState,
+    ) -> anyhow::Result<usize> {
+        state
+            .pgconnection
+            .lock()
+            .unwrap()
+            .build_transaction()
+            .read_write()
+            .run(move |conn| {
+                conn.transaction(|conn| {
+                    insert_into(authorized_users::table)
+                        .values(authorized_user)
                         .execute(conn)
                 })
                 .map_err(anyhow::Error::from)
-            }
-        })
-}
-
-/// This function is going to read data out of the database and return an ```anyhow::Result<Option<Account>>```
-/// If the query was unsuccessful or didnt find the user it will return an error.
-/// If the query was successful and found the user the client requested it will return an ```Account```
-pub fn handle_account_login_request(
-    request: Account,
-    state: ServerState,
-) -> anyhow::Result<unsafe_types::AccountLookup> {
-    let argon2 = Argon2::default();
-
-    state
-        .pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_only()
-        .run(|conn| {
-            conn.transaction(|conn| {
-                let matched_account: Option<unsafe_types::AccountLookup> = accounts::dsl::accounts
-                    //Check for username match
-                    .filter(username.eq(request.username))
-                    .select(unsafe_types::AccountLookup::as_select())
-                    //Check for password match
-                    .load(conn)?
-                    .into_iter()
-                    .find(|account_lookup| {
-                        argon2
-                            .verify_password(
-                                request.passw.as_bytes(),
-                                &PasswordHash::new(&account_lookup.passw).unwrap(),
-                            )
-                            .is_ok()
-                    });
-
-                matched_account.ok_or_else(|| anyhow::Error::msg("Profile not found"))
-            })
-        })
-        .map_err(anyhow::Error::from)
-}
-
-/// This function takes an ```&AuthorizedUser``` instance which it writes to the database, so that it can be accessed later to authenticate the user
-pub fn record_authenticated_account(
-    authorized_user: &AuthorizedUser,
-    state: ServerState,
-) -> anyhow::Result<usize> {
-    state
-        .pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_write()
-        .run(move |conn| {
-            conn.transaction(|conn| {
-                insert_into(authorized_users::table)
-                    .values(authorized_user)
-                    .execute(conn)
             })
             .map_err(anyhow::Error::from)
-        })
-        .map_err(anyhow::Error::from)
-}
+    }
 
-/// This function takes an ```&AuthorizedUser``` instance which it check for in the database, so it authenticate the user
-pub fn check_authenticated_account(
-    pgconnection: Arc<std::sync::Mutex<PgConnection>>,
-    authorized_user: &AuthorizedUser,
-) -> Result<Option<AuthorizedUser>, StatusCode> {
-    pgconnection
-        .lock()
-        .unwrap()
-        .build_transaction()
-        .read_only()
-        .run(|conn| {
-            conn.transaction(|conn| {
-                let matched_authorized_account = authorized_users::dsl::authorized_users
-                    .filter(session_id.eq(authorized_user.session_id.clone()))
-                    .select(AuthorizedUser::as_select())
-                    .load(conn)?
-                    .into_iter()
-                    .find(|auth_user| {
-                        auth_user.client_signature == authorized_user.client_signature
-                            && auth_user.account_id == auth_user.account_id
-                    });
+    /// This function takes an ```&AuthorizedUser``` instance which it check for in the database, so it authenticate the user
+    pub fn check_authenticated_account(
+        pgconnection: Arc<std::sync::Mutex<PgConnection>>,
+        authorized_user: &AuthorizedUser,
+    ) -> Result<Option<AuthorizedUser>, StatusCode> {
+        pgconnection
+            .lock()
+            .unwrap()
+            .build_transaction()
+            .read_only()
+            .run(|conn| {
+                conn.transaction(|conn| {
+                    let matched_authorized_account = authorized_users::dsl::authorized_users
+                        .filter(session_id.eq(authorized_user.session_id.clone()))
+                        .select(AuthorizedUser::as_select())
+                        .load(conn)?
+                        .into_iter()
+                        .find(|auth_user| {
+                            auth_user.client_signature == authorized_user.client_signature
+                                && auth_user.account_id == auth_user.account_id
+                        });
 
-                Ok(matched_authorized_account)
+                    Ok(matched_authorized_account)
+                })
             })
-        })
-        .map_err(|_: Error| StatusCode::INTERNAL_SERVER_ERROR)
+            .map_err(|_: Error| StatusCode::INTERNAL_SERVER_ERROR)
+    }
 }
-
-}
-

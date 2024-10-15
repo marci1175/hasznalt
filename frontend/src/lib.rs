@@ -117,9 +117,24 @@ pub struct NewAccount {
     pub passw: String,
 }
 
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AccountLookup {
+    /// The username of the requested user
+    pub username: String,
+    /// The UUID of the requested user
+    pub id: i32,
+    /// The timestamp taken when the account was created
+    pub created_at: chrono::NaiveDate,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct AuthorizedUser {
     pub client_signature: String,
     pub session_id: String,
     pub account_id: i32,
+}
+
+#[derive(Debug, PartialEq, Properties)]
+pub struct AccountPageProperties {
+    pub id: i32,
 }

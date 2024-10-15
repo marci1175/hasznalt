@@ -5,15 +5,15 @@ use axum::{
     routing::{get, post},
     serve, Json, Router,
 };
-use axum_extra::extract::{
-    cookie::Cookie,
-    CookieJar,
-};
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 use backend::{
-    db_type::unsafe_types::{Account, AuthorizedUser}, establish_server_state,  ServerState,
-    safe_functions::{check_authenticated_account,
-        handle_account_login_request, handle_account_register_request,
-        lookup_account_from_id, record_authenticated_account}
+    db_types::{safe_types::AccountLookup, unsafe_types::{Account, AuthorizedUser}},
+    establish_server_state,
+    safe_functions::{
+        check_authenticated_account, handle_account_login_request, handle_account_register_request,
+        lookup_account_from_id, record_authenticated_account,
+    },
+    ServerState,
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -65,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
         */
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
-        .route("/api/account", post(get_account_login_request))
+        .route("/api/account", post(get_account_account_request))
         .layer(cors)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -132,9 +132,19 @@ async fn login_persistence(
         if let Some(authenticated_user) =
             check_authenticated_account(state.pgconnection.clone(), &authorized_user)?
         {
-            dbg!(lookup_account_from_id(authenticated_user.account_id, state.clone()).unwrap());
+            lookup_account_from_id(authenticated_user.account_id, state.clone()).unwrap();
         }
     }
 
     Ok(next.run(request).await)
+}
+
+pub async fn get_account_account_request(
+    State(state): State<ServerState>,
+    Json(id): Json<i32>,
+) -> Result<Json<AccountLookup>, StatusCode> {
+    let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
+    
+    //Fix double converting to json
+    Ok(Json(account))
 }
