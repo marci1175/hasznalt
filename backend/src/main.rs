@@ -145,6 +145,5 @@ pub async fn get_account_account_request(
 ) -> Result<Json<AccountLookup>, StatusCode> {
     let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
     
-    //Fix double converting to json
     Ok(Json(account))
 }
