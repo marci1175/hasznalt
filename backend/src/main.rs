@@ -6,14 +6,14 @@ use axum::{
     serve, Json, Router,
 };
 use axum_extra::extract::{
-    cookie::{Cookie, Expiration},
+    cookie::Cookie,
     CookieJar,
 };
 use backend::{
-    check_authenticated_account,
-    db_type::{Account, AuthorizedUser, __AccountLookupUnsafe},
-    establish_server_state, handle_account_login_request, handle_account_register_request,
-    lookup_account_from_id, record_authenticated_account, ServerState,
+    db_type::unsafe_types::{Account, AuthorizedUser}, establish_server_state,  ServerState,
+    safe_functions::{check_authenticated_account,
+        handle_account_login_request, handle_account_register_request,
+        lookup_account_from_id, record_authenticated_account}
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;

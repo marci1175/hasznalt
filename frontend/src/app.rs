@@ -2,13 +2,13 @@ use frontend::{AuthorizedUser, Button, NewAccount, TextField};
 use js_sys::{wasm_bindgen, JsString};
 use reqwest::Client;
 use std::str::FromStr;
-use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
+use wasm_bindgen::JsCast;
 use web_sys::{
-    console::{self, debug_1},
+    console::{self},
     window, HtmlDocument,
 };
 use yew::prelude::*;
-use yew_router::{hooks::use_navigator, prelude::Redirect, BrowserRouter, Routable, Switch};
+use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
 
 #[derive(Routable, Clone, PartialEq)]
 enum Route {
