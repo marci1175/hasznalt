@@ -221,26 +221,13 @@ pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Htm
     let requested_account = use_state_eq(|| AccountLookup::default());
 
     let id_clone = id.clone();
-    
+
     let requested_account_clone = requested_account.clone();
 
     spawn_local(async move {
-        let client = Client::new();
-
-        let post_request = client.post("http://[::1]:3004/api/account");
-
-        let response = post_request
-            .header("Content-Type", "application/json")
-            .body(id_clone.to_string())
-            .send()
-            .await
-            .unwrap();
-
-        let server_response = response.text().await.unwrap();
-
-        requested_account_clone.set(serde_json::from_str::<AccountLookup>(&server_response).unwrap());
+        requested_account_clone.set(request_account_lookup(id_clone).await.unwrap());
     });
-    
+
     html!(
         <div id="username_title">
             <center>
@@ -250,4 +237,21 @@ pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Htm
             </center>
         </div>
     )
+}
+
+pub async fn request_account_lookup(id: i32) -> anyhow::Result<AccountLookup> {
+    let client = Client::new();
+
+    let post_request = client.post("http://[::1]:3004/api/account");
+
+    let response = post_request
+        .header("Content-Type", "application/json")
+        .body(id.to_string())
+        .send()
+        .await
+        ?;
+
+    let server_response = response.text().await?;
+
+    Ok(serde_json::from_str::<AccountLookup>(&server_response)?)
 }

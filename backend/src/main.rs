@@ -7,7 +7,10 @@ use axum::{
 };
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use backend::{
-    db_types::{safe_types::AccountLookup, unsafe_types::{Account, AuthorizedUser}},
+    db_types::{
+        safe_types::AccountLookup,
+        unsafe_types::{Account, AuthorizedUser},
+    },
     establish_server_state,
     safe_functions::{
         check_authenticated_account, handle_account_login_request, handle_account_register_request,
@@ -144,6 +147,6 @@ pub async fn get_account_account_request(
     Json(id): Json<i32>,
 ) -> Result<Json<AccountLookup>, StatusCode> {
     let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
-    
+
     Ok(Json(account))
 }

@@ -19,4 +19,5 @@ yew-router = "0.18.0"
 serde_json = "1.0.128"
 chrono = {version = "0.4.38", features = ["serde"]}
 wasm-cookies = "0.2.1"
+anyhow = "1.0.89"
 
