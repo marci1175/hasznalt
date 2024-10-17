@@ -3,9 +3,8 @@ use frontend::{
 };
 use js_sys::{wasm_bindgen, JsString};
 use reqwest::Client;
-use serde_json::Value;
 use std::str::FromStr;
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{
     console::{self},
@@ -218,9 +217,9 @@ pub fn get_cookie(name: &str) -> Option<String> {
 
 #[function_component(Account)]
 pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Html {
-    let requested_account = use_state_eq(|| AccountLookup::default());
+    let requested_account = use_state_eq(AccountLookup::default);
 
-    let id_clone = id.clone();
+    let id_clone = *id;
 
     let requested_account_clone = requested_account.clone();
 

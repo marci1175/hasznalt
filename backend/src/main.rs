@@ -3,20 +3,14 @@ use axum::{
     middleware::{self, Next},
     response::{Html, IntoResponse},
     routing::{get, post},
-    serve, Json, Router,
+    serve, Router,
 };
-use axum_extra::extract::{cookie::Cookie, CookieJar};
+use axum_extra::extract::CookieJar;
 use backend::{
-    db_types::{
-        safe_types::AccountLookup,
-        unsafe_types::{Account, AuthorizedUser},
-    },
-    establish_server_state,
-    safe_functions::{
-        check_authenticated_account, handle_account_login_request, handle_account_register_request,
-        lookup_account_from_id, record_authenticated_account,
-    },
-    ServerState,
+    db_types::unsafe_types::AuthorizedUser, establish_server_state, get_account_request, get_account_login_request, get_account_register_request, safe_functions::{
+        check_authenticated_account,
+        lookup_account_from_id,
+    }, ServerState
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -68,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         */
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
-        .route("/api/account", post(get_account_account_request))
+        .route("/api/account", post(get_account_request))
         .layer(cors)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -81,45 +75,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// This function will register a new account depending on the request it takes.
-/// It can either return ```StatusCode::CREATED```: When the account has been successfuly registered
-/// Or return ```StatusCode::FOUND```: When the account has been already registered, thus it will not create another one
-pub async fn get_account_register_request(
-    State(state): State<ServerState>,
-    Json(body): Json<Account>,
-) -> StatusCode {
-    match handle_account_register_request(body, state) {
-        Ok(_) => StatusCode::CREATED,
-        Err(_err) => StatusCode::FOUND,
-    }
-}
-
-pub async fn get_account_login_request(
-    jar: CookieJar,
-    State(state): State<ServerState>,
-    Json(body): Json<Account>,
-) -> Result<(CookieJar, Json<String>), StatusCode> {
-    let account =
-        handle_account_login_request(body, state.clone()).map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let authorized_user = AuthorizedUser::from_account(&account, String::new());
-
-    record_authenticated_account(&authorized_user, state.clone())
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok((
-        jar.add(
-            Cookie::build(Cookie::new("session_id", authorized_user.to_string()))
-                .permanent()
-                .path("/")
-                .http_only(false)
-                .same_site(axum_extra::extract::cookie::SameSite::Lax)
-                .build(),
-        ),
-        axum::Json(account.to_string()),
-    ))
-}
-
 async fn login_persistence(
     jar: CookieJar,
     State(state): State<ServerState>,
@@ -127,8 +82,8 @@ async fn login_persistence(
     next: Next,
 ) -> Result<impl IntoResponse, StatusCode> {
     //Check if the user has already authenticated itself once
-    if let Some(session_id) = jar.get("session_id") {
-        let authorized_user = serde_json::from_str::<AuthorizedUser>(session_id.value())
+    if let Some(cookie_session_id) = jar.get("session_id") {
+        let authorized_user = serde_json::from_str::<AuthorizedUser>(cookie_session_id.value())
             .map_err(|_| StatusCode::BAD_REQUEST)?;
 
         //Validate cookie
@@ -140,13 +95,4 @@ async fn login_persistence(
     }
 
     Ok(next.run(request).await)
-}
-
-pub async fn get_account_account_request(
-    State(state): State<ServerState>,
-    Json(id): Json<i32>,
-) -> Result<Json<AccountLookup>, StatusCode> {
-    let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
-
-    Ok(Json(account))
 }

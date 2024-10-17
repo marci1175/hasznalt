@@ -12,12 +12,17 @@ use diesel::{
     RunQueryDsl, SelectableHelper,
 };
 use reqwest::StatusCode;
+use safe_functions::{handle_account_login_request, handle_account_register_request, lookup_account_from_id, record_authenticated_account};
 use schema::{
     accounts::{self, username},
     authorized_users::{self, session_id},
 };
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
+use axum::{
+    extract::State, Json,
+};
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 
 pub mod schema;
 
@@ -195,12 +200,16 @@ pub fn establish_server_state() -> anyhow::Result<ServerState> {
     })
 }
 
+/// This function will deserialize a ```String``` into ```T```
 pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
     serialized_string: &'a str,
 ) -> anyhow::Result<T> {
     Ok(serde_json::from_str::<T>(serialized_string)?)
 }
 
+/// This mod contains `unsafe` function which **will** reveal sensitive information. 
+/// These functions should **ONLY** be used in the backend where data security is verified and guaranteed.
+/// The `safe_functions` and `unsafe_functions` mod contains functions which make queries to the database.
 pub mod unsafe_functions {
     use crate::*;
 
@@ -231,6 +240,9 @@ pub mod unsafe_functions {
     }
 }
 
+/// This mod of functions contain `safe` functions which can not reveal sensitive information.
+/// When creating a function in this mod please verify the intergrity.
+/// The `safe_functions` and `unsafe_functions` mod contains functions which make queries to the database.
 pub mod safe_functions {
     use crate::*;
     /// This function looks up the public information of an account based on their UUID.
@@ -377,4 +389,58 @@ pub mod safe_functions {
             })
             .map_err(|_: Error| StatusCode::INTERNAL_SERVER_ERROR)
     }
+}
+
+/// This function will register a new account depending on the request it takes.
+/// It can either return ```StatusCode::CREATED```: When the account has been successfuly registered
+/// Or return ```StatusCode::FOUND```: When the account has been already registered, thus it will not create another one
+pub async fn get_account_register_request(
+    State(state): State<ServerState>,
+    Json(body): Json<Account>,
+) -> StatusCode {
+    match handle_account_register_request(body, state) {
+        Ok(_) => StatusCode::CREATED,
+        Err(_err) => StatusCode::FOUND,
+    }
+}
+
+/// This function will create a request to the database whether the account's username is found.
+/// If the password to that account matches it will create an authenticated session_id and set the client's storage
+/// If the account is either not found or an invalid password is entered this function will return ```StatusCode::NOT_FOUND```
+pub async fn get_account_login_request(
+    jar: CookieJar,
+    State(state): State<ServerState>,
+    Json(body): Json<Account>,
+) -> Result<(CookieJar, Json<String>), StatusCode> {
+    let account =
+        handle_account_login_request(body, state.clone()).map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let authorized_user = AuthorizedUser::from_account(&account, String::new());
+
+    record_authenticated_account(&authorized_user, state.clone())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok((
+        jar.add(
+            Cookie::build(Cookie::new("session_id", authorized_user.to_string()))
+                .permanent()
+                .path("/")
+                .http_only(false)
+                .same_site(axum_extra::extract::cookie::SameSite::Lax)
+                .build(),
+        ),
+        axum::Json(account.to_string()),
+    ))
+}
+
+/// This function will create a request to the database to find the account specified in the ID argument
+/// If the account is found this function  will return a ```Json<safe_types::AccountLookup>```
+/// If the account is not found it wil return ```StatusCode::NOT_FOUND```
+pub async fn get_account_request(
+    State(state): State<ServerState>,
+    Json(id): Json<i32>,
+) -> Result<Json<AccountLookup>, StatusCode> {
+    let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
+
+    Ok(Json(account))
 }
