@@ -48,6 +48,7 @@ pub fn main_page() -> Html {
     let navigator = use_navigator().unwrap();
     let searchbar_text = use_state(|| String::from("Keresés"));
     let search_buffer = use_state(String::new);
+    let requested_account = use_state_eq(|| AccountLookup::default());
 
     html! {
         <>
@@ -55,9 +56,18 @@ pub fn main_page() -> Html {
                 {
                     if let Some(cookie_value) = get_cookie("session_id") {
                         let cookie_struct = serde_json::from_str::<AuthorizedUser>(&cookie_value).unwrap();
+
+                        let requested_account_clone = requested_account.clone();
+
+                        let id_clone = cookie_struct.account_id;
+
+                        spawn_local(async move {
+                            requested_account_clone.set(request_account_lookup(id_clone).await.unwrap());
+                        });
+
                         html!(
                             <>
-                                <h5>{ format!("Bejelentkezve mint, {}", cookie_struct.account_id) }</h5>
+                                <h5>{ format!("Bejelentkezve mint, {}", requested_account.username) }</h5>
                                 <Button label={ "Fiókom" }
                                     callback={
                                         let navigator = navigator.clone();
@@ -217,11 +227,11 @@ pub fn get_cookie(name: &str) -> Option<String> {
 
 #[function_component(Account)]
 pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Html {
-    let requested_account = use_state_eq(AccountLookup::default);
-
-    let id_clone = *id;
+    let requested_account: UseStateHandle<AccountLookup> = use_state_eq(AccountLookup::default);
 
     let requested_account_clone = requested_account.clone();
+
+    let id_clone = *id;
 
     spawn_local(async move {
         requested_account_clone.set(request_account_lookup(id_clone).await.unwrap());

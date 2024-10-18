@@ -117,7 +117,7 @@ pub struct NewAccount {
     pub passw: String,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AccountLookup {
     /// The username of the requested user
     pub username: String,
