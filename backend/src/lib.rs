@@ -8,9 +8,10 @@ use db_types::{
     unsafe_types::{self, Account, AuthorizedUser},
 };
 use diesel::{
-    dsl::insert_into, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
-    RunQueryDsl, SelectableHelper,
+    dsl::insert_into, r2d2::ConnectionManager, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper
 };
+use hmac::{Hmac, Mac};
+use jwt::{SignWithKey, VerifyWithKey};
 use reqwest::StatusCode;
 use safe_functions::{handle_account_login_request, handle_account_register_request, lookup_account_from_id, record_authenticated_account};
 use schema::{
@@ -18,17 +19,20 @@ use schema::{
     authorized_users::{self, session_id},
 };
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use sha2::Sha256;
+use std::{collections::BTreeMap, sync::{Arc, Mutex}};
 use axum::{
-    extract::State, Json,
+    extract::{FromRef, State}, Json,
 };
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 
 pub mod schema;
 
+pub type PgPool = r2d2::Pool<ConnectionManager<PgConnection>>;
+
 #[derive(Clone)]
 pub struct ServerState {
-    pub pgconnection: Arc<Mutex<PgConnection>>,
+    pub pgconnection: PgPool,
 }
 
 pub mod db_types {
@@ -192,11 +196,18 @@ pub fn hash_password(password: &str) -> anyhow::Result<String> {
 
 /// This function establishes the ```ServerState``` instance
 pub fn establish_server_state() -> anyhow::Result<ServerState> {
+    let database_url = include_str!("..\\..\\.env");
     // Connenct to Database
-    let pgconnection = diesel::PgConnection::establish(include_str!("..\\..\\.env"))?;
+    // let pgconnection = diesel::PgConnection::establish()?;
+
+    let connection_manager = ConnectionManager::new(database_url);
+
+    let pool = r2d2::Builder::new()
+        .build(connection_manager)?;
+
 
     Ok(ServerState {
-        pgconnection: Arc::new(Mutex::new(pgconnection)),
+        pgconnection: pool,
     })
 }
 
@@ -221,8 +232,7 @@ pub mod unsafe_functions {
     ) -> anyhow::Result<unsafe_types::AccountLookup> {
         state
             .pgconnection
-            .lock()
-            .unwrap()
+            .get()?
             .build_transaction()
             .read_only()
             .run(move |conn| {
@@ -250,8 +260,7 @@ pub mod safe_functions {
     pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookup> {
         state
             .pgconnection
-            .lock()
-            .unwrap()
+            .get()?
             .build_transaction()
             .read_only()
             .run(move |conn| {
@@ -277,8 +286,7 @@ pub mod safe_functions {
     ) -> anyhow::Result<usize> {
         state
             .pgconnection
-            .lock()
-            .unwrap()
+            .get()?
             .build_transaction()
             .read_write()
             .run(move |conn| {
@@ -311,8 +319,7 @@ pub mod safe_functions {
 
         state
             .pgconnection
-            .lock()
-            .unwrap()
+            .get()?
             .build_transaction()
             .read_only()
             .run(|conn| {
@@ -347,8 +354,7 @@ pub mod safe_functions {
     ) -> anyhow::Result<usize> {
         state
             .pgconnection
-            .lock()
-            .unwrap()
+            .get()?
             .build_transaction()
             .read_write()
             .run(move |conn| {
@@ -364,12 +370,11 @@ pub mod safe_functions {
 
     /// This function takes an ```&AuthorizedUser``` instance which it check for in the database, so it authenticate the user
     pub fn check_authenticated_account(
-        pgconnection: Arc<std::sync::Mutex<PgConnection>>,
+        pgconnection: PgPool,
         authorized_user: &AuthorizedUser,
     ) -> Result<Option<AuthorizedUser>, StatusCode> {
         pgconnection
-            .lock()
-            .unwrap()
+            .get().map_err(|_| StatusCode::REQUEST_TIMEOUT)?
             .build_transaction()
             .read_only()
             .run(|conn| {
@@ -443,4 +448,20 @@ pub async fn get_account_request(
     let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok(Json(account))
+}
+
+pub fn get_claims_from_str(encrypted_string: &str, secret: &[u8]) -> anyhow::Result<BTreeMap<String, String>> {
+    let key: Hmac<Sha256> = Hmac::new_from_slice(secret)?;
+
+    let claims: BTreeMap<String, String> = encrypted_string.verify_with_key(&key)?;
+
+    Ok(claims)
+}
+
+pub fn create_claims(cookies: BTreeMap<String, String>, secret: &[u8]) -> anyhow::Result<String> {
+    let key: Hmac<Sha256> = Hmac::new_from_slice(secret)?;
+    
+    let token_string = cookies.sign_with_key(&key)?;
+
+    Ok(token_string)
 }
