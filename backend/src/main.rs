@@ -7,10 +7,11 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use backend::{
-    db_types::unsafe_types::AuthorizedUser, establish_server_state, get_account_request, get_account_login_request, get_account_register_request, safe_functions::{
-        check_authenticated_account,
-        lookup_account_from_id,
-    }, ServerState
+    db_types::unsafe_types::AuthorizedUser,
+    establish_server_state, get_account_login_request, get_account_register_request,
+    get_account_request,
+    safe_functions::{check_authenticated_account, lookup_account_from_id},
+    ServerState,
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -90,7 +91,8 @@ async fn login_persistence(
         if let Some(authenticated_user) =
             check_authenticated_account(state.pgconnection.clone(), &authorized_user)?
         {
-            lookup_account_from_id(authenticated_user.account_id, state.clone()).unwrap();
+            lookup_account_from_id(authenticated_user.account_id, state.pgconnection.clone())
+                .unwrap();
         }
     }
 

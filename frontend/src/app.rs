@@ -2,7 +2,7 @@ use frontend::{
     AccountLookup, AccountPageProperties, AuthorizedUser, Button, NewAccount, TextField,
 };
 use js_sys::{wasm_bindgen, JsString};
-use reqwest::Client;
+use reqwest::{header::HeaderMap, Client};
 use std::str::FromStr;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
@@ -257,8 +257,7 @@ pub async fn request_account_lookup(id: i32) -> anyhow::Result<AccountLookup> {
         .header("Content-Type", "application/json")
         .body(id.to_string())
         .send()
-        .await
-        ?;
+        .await?;
 
     let server_response = response.text().await?;
 

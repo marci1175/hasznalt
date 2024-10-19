@@ -3,28 +3,37 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
+use axum::{
+    extract::{FromRef, State},
+    http::HeaderMap,
+    Json,
+};
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 use db_types::{
     safe_types::AccountLookup,
     unsafe_types::{self, Account, AuthorizedUser},
 };
 use diesel::{
-    dsl::insert_into, r2d2::ConnectionManager, Connection, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper
+    dsl::insert_into, r2d2::ConnectionManager, Connection, ExpressionMethods, OptionalExtension,
+    PgConnection, QueryDsl, RunQueryDsl, SelectableHelper,
 };
 use hmac::{Hmac, Mac};
 use jwt::{SignWithKey, VerifyWithKey};
 use reqwest::StatusCode;
-use safe_functions::{handle_account_login_request, handle_account_register_request, lookup_account_from_id, record_authenticated_account};
+use safe_functions::{
+    check_authenticated_account, handle_account_login_request, handle_account_register_request,
+    lookup_account_from_id, record_authenticated_account,
+};
 use schema::{
     accounts::{self, username},
     authorized_users::{self, session_id},
 };
 use serde::Deserialize;
 use sha2::Sha256;
-use std::{collections::BTreeMap, sync::{Arc, Mutex}};
-use axum::{
-    extract::{FromRef, State}, Json,
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
 };
-use axum_extra::extract::{cookie::Cookie, CookieJar};
 
 pub mod schema;
 
@@ -202,13 +211,9 @@ pub fn establish_server_state() -> anyhow::Result<ServerState> {
 
     let connection_manager = ConnectionManager::new(database_url);
 
-    let pool = r2d2::Builder::new()
-        .build(connection_manager)?;
+    let pool = r2d2::Builder::new().build(connection_manager)?;
 
-
-    Ok(ServerState {
-        pgconnection: pool,
-    })
+    Ok(ServerState { pgconnection: pool })
 }
 
 /// This function will deserialize a ```String``` into ```T```
@@ -218,7 +223,7 @@ pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
     Ok(serde_json::from_str::<T>(serialized_string)?)
 }
 
-/// This mod contains `unsafe` function which **will** reveal sensitive information. 
+/// This mod contains `unsafe` function which **will** reveal sensitive information.
 /// These functions should **ONLY** be used in the backend where data security is verified and guaranteed.
 /// The `safe_functions` and `unsafe_functions` mod contains functions which make queries to the database.
 pub mod unsafe_functions {
@@ -228,10 +233,9 @@ pub mod unsafe_functions {
     /// Please note that this function should **NEVER** be used to return data to anywhere other then backend.
     pub fn __lookup_account_from_id_unsafe(
         id: i32,
-        state: ServerState,
+        pgconnection: PgPool,
     ) -> anyhow::Result<unsafe_types::AccountLookup> {
-        state
-            .pgconnection
+        pgconnection
             .get()?
             .build_transaction()
             .read_only()
@@ -257,9 +261,8 @@ pub mod safe_functions {
     use crate::*;
     /// This function looks up the public information of an account based on their UUID.
     /// This function will return an error if the user doesnt exist.
-    pub fn lookup_account_from_id(id: i32, state: ServerState) -> anyhow::Result<AccountLookup> {
-        state
-            .pgconnection
+    pub fn lookup_account_from_id(id: i32, pgconnection: PgPool) -> anyhow::Result<AccountLookup> {
+        pgconnection
             .get()?
             .build_transaction()
             .read_only()
@@ -282,10 +285,10 @@ pub mod safe_functions {
     /// If the query was successful and found the user the client requested it will return an ```Error(_)```
     pub fn handle_account_register_request(
         request: Account,
-        state: ServerState,
+        pgconnection: PgPool,
+        client_headers: HeaderMap,
     ) -> anyhow::Result<usize> {
-        state
-            .pgconnection
+        pgconnection
             .get()?
             .build_transaction()
             .read_write()
@@ -313,12 +316,11 @@ pub mod safe_functions {
     /// If the query was successful and found the user the client requested it will return an ```Account```
     pub fn handle_account_login_request(
         request: Account,
-        state: ServerState,
+        pgconnection: PgPool,
     ) -> anyhow::Result<unsafe_types::AccountLookup> {
         let argon2 = Argon2::default();
 
-        state
-            .pgconnection
+        pgconnection
             .get()?
             .build_transaction()
             .read_only()
@@ -350,10 +352,9 @@ pub mod safe_functions {
     /// This function takes an ```&AuthorizedUser``` instance which it writes to the database, so that it can be accessed later to authenticate the user
     pub fn record_authenticated_account(
         authorized_user: &AuthorizedUser,
-        state: ServerState,
+        pgconnection: PgPool,
     ) -> anyhow::Result<usize> {
-        state
-            .pgconnection
+        pgconnection
             .get()?
             .build_transaction()
             .read_write()
@@ -374,7 +375,8 @@ pub mod safe_functions {
         authorized_user: &AuthorizedUser,
     ) -> Result<Option<AuthorizedUser>, StatusCode> {
         pgconnection
-            .get().map_err(|_| StatusCode::REQUEST_TIMEOUT)?
+            .get()
+            .map_err(|_| StatusCode::REQUEST_TIMEOUT)?
             .build_transaction()
             .read_only()
             .run(|conn| {
@@ -386,7 +388,7 @@ pub mod safe_functions {
                         .into_iter()
                         .find(|auth_user| {
                             auth_user.client_signature == authorized_user.client_signature
-                                && auth_user.account_id == auth_user.account_id
+                                && auth_user.account_id == auth_user.account_id && auth_user.client_signature == authorized_user.client_signature
                         });
 
                     Ok(matched_authorized_account)
@@ -401,9 +403,10 @@ pub mod safe_functions {
 /// Or return ```StatusCode::FOUND```: When the account has been already registered, thus it will not create another one
 pub async fn get_account_register_request(
     State(state): State<ServerState>,
+    header: HeaderMap,
     Json(body): Json<Account>,
 ) -> StatusCode {
-    match handle_account_register_request(body, state) {
+    match handle_account_register_request(body, state.pgconnection.clone(), header) {
         Ok(_) => StatusCode::CREATED,
         Err(_err) => StatusCode::FOUND,
     }
@@ -415,15 +418,29 @@ pub async fn get_account_register_request(
 pub async fn get_account_login_request(
     jar: CookieJar,
     State(state): State<ServerState>,
+    header: HeaderMap,
     Json(body): Json<Account>,
 ) -> Result<(CookieJar, Json<String>), StatusCode> {
-    let account =
-        handle_account_login_request(body, state.clone()).map_err(|_| StatusCode::NOT_FOUND)?;
+    let account = handle_account_login_request(body, state.pgconnection.clone())
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let authorized_user = AuthorizedUser::from_account(&account, String::new());
+    let authorized_user = AuthorizedUser::from_account(
+        &account,
+        sha256::digest(
+            header
+                .values()
+                .map(|val| val.clone().as_bytes().to_vec())
+                .collect::<Vec<Vec<u8>>>()
+                .concat(),
+        ),
+    );
 
-    record_authenticated_account(&authorized_user, state.clone())
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // If there is an existing record with the same session id, but different client signature it means that the client may have changed host computer or the session id got stolen.
+    if check_authenticated_account(state.clone().pgconnection, &authorized_user)?.is_none() {
+        //Create a record if there wasnt a vail session id already
+        record_authenticated_account(&authorized_user, state.pgconnection.clone())
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
 
     Ok((
         jar.add(
@@ -445,12 +462,16 @@ pub async fn get_account_request(
     State(state): State<ServerState>,
     Json(id): Json<i32>,
 ) -> Result<Json<AccountLookup>, StatusCode> {
-    let account = lookup_account_from_id(id, state).map_err(|_| StatusCode::NOT_FOUND)?;
+    let account = lookup_account_from_id(id, state.pgconnection.clone())
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok(Json(account))
 }
 
-pub fn get_claims_from_str(encrypted_string: &str, secret: &[u8]) -> anyhow::Result<BTreeMap<String, String>> {
+pub fn get_claims_from_str(
+    encrypted_string: &str,
+    secret: &[u8],
+) -> anyhow::Result<BTreeMap<String, String>> {
     let key: Hmac<Sha256> = Hmac::new_from_slice(secret)?;
 
     let claims: BTreeMap<String, String> = encrypted_string.verify_with_key(&key)?;
@@ -460,7 +481,7 @@ pub fn get_claims_from_str(encrypted_string: &str, secret: &[u8]) -> anyhow::Res
 
 pub fn create_claims(cookies: BTreeMap<String, String>, secret: &[u8]) -> anyhow::Result<String> {
     let key: Hmac<Sha256> = Hmac::new_from_slice(secret)?;
-    
+
     let token_string = cookies.sign_with_key(&key)?;
 
     Ok(token_string)
