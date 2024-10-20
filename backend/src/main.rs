@@ -1,17 +1,9 @@
 use axum::{
-    extract::{Request, State},
-    middleware::{self, Next},
-    response::{Html, IntoResponse},
-    routing::{get, post},
-    serve, Router,
+    extract::{Request, State}, middleware::{self, Next}, response::{Html, IntoResponse}, routing::{get, post}, serve, Json, Router
 };
 use axum_extra::extract::CookieJar;
 use backend::{
-    db_types::unsafe_types::AuthorizedUser,
-    establish_server_state, get_account_login_request, get_account_register_request,
-    get_account_request,
-    safe_functions::{check_authenticated_account, lookup_account_from_id},
-    ServerState,
+    db_types::{safe_types::AccountLookup, unsafe_types::AuthorizedUser}, establish_server_state, get_account_id_account_request, get_account_login_request, get_account_register_request, get_cookie_account_request, safe_functions::{check_authenticated_account, lookup_account_from_id}, ServerState
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -63,7 +55,8 @@ async fn main() -> anyhow::Result<()> {
         */
         .route("/api/register", post(get_account_register_request))
         .route("/api/login", post(get_account_login_request))
-        .route("/api/account", post(get_account_request))
+        .route("/api/id_lookup", post(get_account_id_account_request))
+        .route("/api/account", post(get_cookie_account_request))
         .layer(cors)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -91,8 +84,8 @@ async fn login_persistence(
         if let Some(authenticated_user) =
             check_authenticated_account(state.pgconnection.clone(), &authorized_user)?
         {
-            lookup_account_from_id(authenticated_user.account_id, state.pgconnection.clone())
-                .unwrap();
+            dbg!(lookup_account_from_id(authenticated_user.account_id, state.pgconnection.clone())
+                            .unwrap());
         }
     }
 

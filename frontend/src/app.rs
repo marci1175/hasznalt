@@ -3,7 +3,7 @@ use frontend::{
 };
 use js_sys::{wasm_bindgen, JsString};
 use reqwest::{header::HeaderMap, Client};
-use std::str::FromStr;
+use std::{ops::Deref, str::FromStr};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{
@@ -48,23 +48,25 @@ pub fn main_page() -> Html {
     let navigator = use_navigator().unwrap();
     let searchbar_text = use_state(|| String::from("Keresés"));
     let search_buffer = use_state(String::new);
-    let requested_account = use_state_eq(|| AccountLookup::default());
+    let requested_account: UseStateHandle<Option<AccountLookup>> = use_state_eq(|| None);
+
+    if let Some(cookie_value) = get_cookie("session_id") {
+        let user_cookie = serde_json::from_str::<AuthorizedUser>(&cookie_value).unwrap();
+
+        let user_cookie_clone = user_cookie.clone();
+
+        let requested_account_clone = requested_account.clone();
+
+        spawn_local(async move {
+            requested_account_clone.set(request_account_lookup_from_cookie(user_cookie_clone.clone()).await.ok());
+        });
+    }
 
     html! {
         <>
             <div id="navigation">
                 {
-                    if let Some(cookie_value) = get_cookie("session_id") {
-                        let cookie_struct = serde_json::from_str::<AuthorizedUser>(&cookie_value).unwrap();
-
-                        let requested_account_clone = requested_account.clone();
-
-                        let id_clone = cookie_struct.account_id;
-
-                        spawn_local(async move {
-                            requested_account_clone.set(request_account_lookup(id_clone).await.unwrap());
-                        });
-
+                    if let Some(requested_account) = (*requested_account).clone() {
                         html!(
                             <>
                                 <h5>{ format!("Bejelentkezve mint, {}", requested_account.username) }</h5>
@@ -72,7 +74,7 @@ pub fn main_page() -> Html {
                                     callback={
                                         let navigator = navigator.clone();
                                         Callback::from(move |_| {
-                                            navigator.push(&Route::Account { id: cookie_struct.account_id });
+                                            navigator.push(&Route::Account { id: requested_account.id });
                                         })
                                     }
                                 />
@@ -98,7 +100,7 @@ pub fn main_page() -> Html {
                                     navigator.push(&Route::Login);
                                 })
                             }/>
-                            </>)
+                        </>)
                     }
                 }
             </div>
@@ -234,7 +236,7 @@ pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Htm
     let id_clone = *id;
 
     spawn_local(async move {
-        requested_account_clone.set(request_account_lookup(id_clone).await.unwrap());
+        requested_account_clone.set(request_account_lookup_from_id(id_clone).await.unwrap());
     });
 
     html!(
@@ -248,14 +250,30 @@ pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Htm
     )
 }
 
-pub async fn request_account_lookup(id: i32) -> anyhow::Result<AccountLookup> {
+pub async fn request_account_lookup_from_id(id: i32) -> anyhow::Result<AccountLookup> {
+    let client = Client::new();
+
+    let post_request = client.post("http://[::1]:3004/api/id_lookup");
+
+    let response = post_request
+        .header("Content-Type", "application/json")
+        .body(id.to_string())
+        .send()
+        .await?;
+
+    let server_response = response.text().await?;
+
+    Ok(serde_json::from_str::<AccountLookup>(&server_response)?)
+}
+
+pub async fn request_account_lookup_from_cookie(user_cookie: AuthorizedUser) -> anyhow::Result<AccountLookup> {
     let client = Client::new();
 
     let post_request = client.post("http://[::1]:3004/api/account");
 
     let response = post_request
         .header("Content-Type", "application/json")
-        .body(id.to_string())
+        .body(user_cookie.to_string())
         .send()
         .await?;
 

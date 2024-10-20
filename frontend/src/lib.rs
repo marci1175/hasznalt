@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use web_sys::HtmlTextAreaElement;
 use yew::html;
@@ -127,11 +129,17 @@ pub struct AccountLookup {
     pub created_at: chrono::NaiveDate,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct AuthorizedUser {
     pub client_signature: String,
     pub session_id: String,
     pub account_id: i32,
+}
+
+impl Display for AuthorizedUser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&serde_json::to_string(self).unwrap())
+    }
 }
 
 #[derive(Debug, PartialEq, Properties)]

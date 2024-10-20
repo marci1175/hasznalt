@@ -216,13 +216,6 @@ pub fn establish_server_state() -> anyhow::Result<ServerState> {
     Ok(ServerState { pgconnection: pool })
 }
 
-/// This function will deserialize a ```String``` into ```T```
-pub fn deserialize_into_value<'a, T: Deserialize<'a>>(
-    serialized_string: &'a str,
-) -> anyhow::Result<T> {
-    Ok(serde_json::from_str::<T>(serialized_string)?)
-}
-
 /// This mod contains `unsafe` function which **will** reveal sensitive information.
 /// These functions should **ONLY** be used in the backend where data security is verified and guaranteed.
 /// The `safe_functions` and `unsafe_functions` mod contains functions which make queries to the database.
@@ -458,7 +451,7 @@ pub async fn get_account_login_request(
 /// This function will create a request to the database to find the account specified in the ID argument
 /// If the account is found this function  will return a ```Json<safe_types::AccountLookup>```
 /// If the account is not found it wil return ```StatusCode::NOT_FOUND```
-pub async fn get_account_request(
+pub async fn get_account_id_account_request(
     State(state): State<ServerState>,
     Json(id): Json<i32>,
 ) -> Result<Json<AccountLookup>, StatusCode> {
@@ -466,6 +459,31 @@ pub async fn get_account_request(
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok(Json(account))
+}
+
+/// This function takes a ```Json<AuthorizedUser>``` and validates it with the database, then it looks up the account based on the account's id then returns the ```AccountLookup``` instance from the database.
+/// If the account based on that id is not found it will return ```StatusCode::NOT_FOUND```  
+/// If the ```AuthorizedUser``` instance is invalid it will return ```StatusCode::BAD_REQUEST```  
+pub async fn get_cookie_account_request(
+    State(state): State<ServerState>,
+    jar: CookieJar,
+) -> Result<Json<AccountLookup>, (CookieJar, StatusCode)> {
+    if let Some(session_id_value) = jar.get("session_id") {
+        let authorized_user = serde_json::from_str::<AuthorizedUser>(&session_id_value.value()).map_err(|_| (jar.clone().remove("session_id"), StatusCode::BAD_REQUEST))?;
+
+        //Check for the user's ```AuthorizedUser``` instance, if found return the ```AccountLookup``` instance of the account from the database.
+        if let Ok(Some(authenticated_user)) =
+            check_authenticated_account(state.pgconnection.clone(), &authorized_user)
+        {
+            return Ok(Json(lookup_account_from_id(authenticated_user.account_id, state.pgconnection.clone()).map_err(|_| (jar.remove("session_id"), StatusCode::NOT_FOUND))?));
+        }
+        else {
+            return Err((jar.remove("session_id"), StatusCode::BAD_REQUEST));
+        }
+    }
+    else {
+        return Err((jar.remove("session_id"), StatusCode::CONTINUE));
+    }
 }
 
 pub fn get_claims_from_str(
