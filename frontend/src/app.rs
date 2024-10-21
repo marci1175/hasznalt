@@ -1,5 +1,5 @@
 use frontend::{
-    get_cookie, request_account_lookup_from_cookie, request_account_lookup_from_id, AccountCredentials, AccountLookup, AccountPageProperties, AuthorizedUser, Button, TextField
+    get_cookie, request_account_lookup_from_cookie, request_account_lookup_from_id, AccountCredentials, AccountLookup, AccountPageProperties, Button, TextField
 };
 use reqwest::Client;
 use wasm_bindgen_futures::spawn_local;
@@ -151,7 +151,7 @@ pub fn login_page() -> Html {
                 })}/>
 
                 {
-                    if let Some(login_success) = (*login_success_clone).clone() {
+                    if let Some(login_success) = *login_success_clone {
                         if login_success {
                             navigator.push(&Route::MainPage);
 

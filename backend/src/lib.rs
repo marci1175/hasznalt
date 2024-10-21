@@ -4,9 +4,7 @@ use argon2::{
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
 use axum::{
-    extract::State,
-    http::HeaderMap,
-    Json,
+    extract::{Request, State}, http::HeaderMap, middleware::Next, response::{IntoResponse, Redirect}, Json
 };
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use db_types::{
@@ -497,4 +495,32 @@ pub fn create_claims(cookies: BTreeMap<String, String>, secret: &[u8]) -> anyhow
     let token_string = cookies.sign_with_key(&key)?;
 
     Ok(token_string)
+}
+
+pub async fn account_redirecting(
+    jar: CookieJar,
+    State(state): State<ServerState>,
+    request: Request,
+    next: Next,
+) -> Result<impl IntoResponse, StatusCode> {
+    //Check if the user has already authenticated itself once
+    if let Some(cookie_session_id) = jar.get("session_id") {
+        //Get path URI
+        let request_path = request.uri();
+
+        //Check if the user has entered forbidden path
+        if request_path == "/login" || request_path == "/register" {
+            let authorized_user = serde_json::from_str::<AuthorizedUser>(cookie_session_id.value())
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        
+            //Validate cookie we will just redirect if valid
+            if (check_authenticated_account(state.pgconnection.clone(), &authorized_user)?).is_some()
+            {
+                //If we have a valid cookie we automaticly redirect to the home page
+                return Ok(Redirect::to("/").into_response());
+            }
+        }
+    }
+
+    Ok(next.run(request).await)
 }

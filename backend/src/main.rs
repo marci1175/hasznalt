@@ -1,9 +1,8 @@
 use axum::{
-    extract::{Request, State}, middleware::{self, Next}, response::{Html, IntoResponse, Redirect}, routing::{get, post}, serve, Router
+    middleware::{self}, response::{Html, IntoResponse}, routing::{get, post}, serve, Router
 };
-use axum_extra::extract::CookieJar;
 use backend::{
-    db_types::unsafe_types::AuthorizedUser, establish_server_state, get_account_id_account_request, get_account_login_request, get_account_register_request, get_cookie_account_request, safe_functions::{check_authenticated_account, lookup_account_from_id}, ServerState
+    account_redirecting, establish_server_state, get_account_id_account_request, get_account_login_request, get_account_register_request, get_cookie_account_request
 };
 use reqwest::{Method, StatusCode};
 use std::path::PathBuf;
@@ -67,33 +66,4 @@ async fn main() -> anyhow::Result<()> {
     serve(listener, app).await?;
 
     Ok(())
-}
-
-async fn account_redirecting(
-    jar: CookieJar,
-    State(state): State<ServerState>,
-    request: Request,
-    next: Next,
-) -> Result<impl IntoResponse, StatusCode> {
-    //Check if the user has already authenticated itself once
-    if let Some(cookie_session_id) = jar.get("session_id") {
-        //Get path URI
-        let request_path = request.uri();
-
-        //Check if the user has entered forbidden path
-        if request_path == "/login" || request_path == "/register" {
-            let authorized_user = serde_json::from_str::<AuthorizedUser>(cookie_session_id.value())
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-        
-            //Validate cookie we will just redirect if valid
-            if let Some(_) =
-                check_authenticated_account(state.pgconnection.clone(), &authorized_user)?
-            {
-                //If we have a valid cookie we automaticly redirect to the home page
-                return Ok(Redirect::to("/").into_response());
-            }
-        }
-    }
-
-    Ok(next.run(request).await)
 }
