@@ -4,7 +4,7 @@ use argon2::{
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
 use axum::{
-    extract::{FromRef, State},
+    extract::State,
     http::HeaderMap,
     Json,
 };
@@ -28,12 +28,8 @@ use schema::{
     accounts::{self, username},
     authorized_users::{self, session_id},
 };
-use serde::Deserialize;
 use sha2::Sha256;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::BTreeMap;
 
 pub mod schema;
 
@@ -206,8 +202,6 @@ pub fn hash_password(password: &str) -> anyhow::Result<String> {
 /// This function establishes the ```ServerState``` instance
 pub fn establish_server_state() -> anyhow::Result<ServerState> {
     let database_url = include_str!("..\\..\\.env");
-    // Connenct to Database
-    // let pgconnection = diesel::PgConnection::establish()?;
 
     let connection_manager = ConnectionManager::new(database_url);
 
@@ -469,20 +463,20 @@ pub async fn get_cookie_account_request(
     jar: CookieJar,
 ) -> Result<Json<AccountLookup>, (CookieJar, StatusCode)> {
     if let Some(session_id_value) = jar.get("session_id") {
-        let authorized_user = serde_json::from_str::<AuthorizedUser>(&session_id_value.value()).map_err(|_| (jar.clone().remove("session_id"), StatusCode::BAD_REQUEST))?;
+        let authorized_user = serde_json::from_str::<AuthorizedUser>(session_id_value.value()).map_err(|_| (jar.clone().remove("session_id"), StatusCode::BAD_REQUEST))?;
 
         //Check for the user's ```AuthorizedUser``` instance, if found return the ```AccountLookup``` instance of the account from the database.
         if let Ok(Some(authenticated_user)) =
             check_authenticated_account(state.pgconnection.clone(), &authorized_user)
         {
-            return Ok(Json(lookup_account_from_id(authenticated_user.account_id, state.pgconnection.clone()).map_err(|_| (jar.remove("session_id"), StatusCode::NOT_FOUND))?));
+            Ok(Json(lookup_account_from_id(authenticated_user.account_id, state.pgconnection.clone()).map_err(|_| (jar.remove("session_id"), StatusCode::NOT_FOUND))?))
         }
         else {
-            return Err((jar.remove("session_id"), StatusCode::BAD_REQUEST));
+            Err((jar.remove("session_id"), StatusCode::BAD_REQUEST))
         }
     }
     else {
-        return Err((jar.remove("session_id"), StatusCode::CONTINUE));
+        Err((jar.remove("session_id"), StatusCode::CONTINUE))
     }
 }
 

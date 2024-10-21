@@ -167,3 +167,21 @@ a {
 :root {
   background-color: #000000;
 }
+
+#fail_prompt {
+  color: red;
+  margin-top: -30px;
+  margin-bottom: -50px;
+  animation-name: error-fade-in;
+  animation-duration: 600ms;
+}
+
+
+@keyframes error-fade-in {
+  from {
+    color: rgb(255, 136, 0);
+  }    
+  to {
+    color: rgb(255, 0, 0);
+  }
+}

@@ -1,15 +1,8 @@
 use frontend::{
-    AccountLookup, AccountPageProperties, AuthorizedUser, Button, NewAccount, TextField,
+    get_cookie, request_account_lookup_from_cookie, request_account_lookup_from_id, AccountCredentials, AccountLookup, AccountPageProperties, AuthorizedUser, Button, TextField
 };
-use js_sys::{wasm_bindgen, JsString};
-use reqwest::{header::HeaderMap, Client};
-use std::{ops::Deref, str::FromStr};
-use wasm_bindgen::JsCast;
+use reqwest::Client;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{
-    console::{self},
-    window, HtmlDocument,
-};
 use yew::prelude::*;
 use yew_router::{hooks::use_navigator, BrowserRouter, Routable, Switch};
 
@@ -22,7 +15,7 @@ enum Route {
     #[at("/login")]
     Login,
     #[at("/account/:id")]
-    Account { id: i32 },
+    IdLookup { id: i32 },
 }
 
 fn switch(routes: Route) -> Html {
@@ -30,7 +23,7 @@ fn switch(routes: Route) -> Html {
         Route::MainPage => html! { <Main /> },
         Route::Register => html! { <Register /> },
         Route::Login => html! { <Login /> },
-        Route::Account { id } => html! { <Account id={id}/> },
+        Route::IdLookup { id } => html! { <Account id={id}/> },
     }
 }
 
@@ -50,15 +43,12 @@ pub fn main_page() -> Html {
     let search_buffer = use_state(String::new);
     let requested_account: UseStateHandle<Option<AccountLookup>> = use_state_eq(|| None);
 
-    if let Some(cookie_value) = get_cookie("session_id") {
-        let user_cookie = serde_json::from_str::<AuthorizedUser>(&cookie_value).unwrap();
-
-        let user_cookie_clone = user_cookie.clone();
-
+    // The cookie will be inspected by the server we only check if it exists
+    if get_cookie("session_id").is_some() {
         let requested_account_clone = requested_account.clone();
 
         spawn_local(async move {
-            requested_account_clone.set(request_account_lookup_from_cookie(user_cookie_clone.clone()).await.ok());
+            requested_account_clone.set(request_account_lookup_from_cookie().await.ok());
         });
     }
 
@@ -74,7 +64,7 @@ pub fn main_page() -> Html {
                                     callback={
                                         let navigator = navigator.clone();
                                         Callback::from(move |_| {
-                                            navigator.push(&Route::Account { id: requested_account.id });
+                                            navigator.push(&Route::IdLookup { id: requested_account.id });
                                         })
                                     }
                                 />
@@ -118,13 +108,15 @@ pub fn main_page() -> Html {
 
 #[function_component(Login)]
 pub fn login_page() -> Html {
-    let username_title = use_state(|| String::from("Felhasználónév"));
-    let password_title = use_state(|| String::from("Jelszó"));
-
     let navigator = use_navigator().unwrap();
 
+    let username_title = use_state(|| String::from("Felhasználónév"));
+    let password_title = use_state(|| String::from("Jelszó"));
     let username_buffer = use_state(String::new);
     let password_buffer = use_state(String::new);
+
+    let login_success: UseStateHandle<Option<bool>> = use_state_eq(|| None);
+    let login_success_clone = login_success.clone();
 
     html!(
         <>
@@ -137,7 +129,7 @@ pub fn login_page() -> Html {
 
                 <Button label={"Bejelentkezés"} callback={Callback::from(move |_| {
                     let client = Client::new();
-
+                    let login_success = login_success.clone();
                     let post_request = client.post("http://[::1]:3004/api/login".to_string());
                     let password_buffer = password_buffer.clone();
                     let username_buffer = username_buffer.clone();
@@ -145,7 +137,7 @@ pub fn login_page() -> Html {
                         let request = post_request
                             .header("Content-Type", "application/json")
                             .body(
-                                serde_json::to_string(&NewAccount {
+                                serde_json::to_string(&AccountCredentials {
                                     passw: password_buffer.to_string(),
                                     username: username_buffer.to_string(),
                                 }).unwrap()
@@ -154,9 +146,33 @@ pub fn login_page() -> Html {
                             .await
                             .unwrap();
 
-                        console::debug_1(&JsString::from_str(&request.text().await.unwrap()).unwrap());
+                        login_success.set(Some(request.status().is_success()));
                     });
                 })}/>
+
+                {
+                    if let Some(login_success) = (*login_success_clone).clone() {
+                        if login_success {
+                            navigator.push(&Route::MainPage);
+
+                            html!(
+                                <div id="success_prompt">
+                                    <h5>{"Login successful! Redirecting. . ."}</h5>
+                                </div>
+                            )
+                        }
+                        else {
+                            html!(
+                                <div id="fail_prompt">
+                                    <h5>{"Invalid username or password!"}</h5>
+                                </div>
+                            )
+                        }
+                    }
+                    else {
+                        html!()
+                    }
+                }
 
                 <div id="misc_area">
                     <a href=".">
@@ -199,7 +215,7 @@ pub fn register_page() -> Html {
                             post_request
                                 .header("Content-Type", "application/json")
                                 .body(
-                                    serde_json::to_string(&NewAccount {
+                                    serde_json::to_string(&AccountCredentials {
                                         passw: password_buffer.to_string(),
                                         username: username_buffer.to_string(),
                                     }).unwrap()
@@ -213,18 +229,6 @@ pub fn register_page() -> Html {
             </div>
         </>
     )
-}
-
-pub fn get_cookie(name: &str) -> Option<String> {
-    let window = window()?;
-
-    let document = window.document()?;
-
-    let html_document: HtmlDocument = document.dyn_into().ok()?;
-
-    let cookies = html_document.cookie().ok()?;
-
-    wasm_cookies::cookies::get(&cookies, name)?.ok()
 }
 
 #[function_component(Account)]
@@ -245,39 +249,10 @@ pub fn account_page(AccountPageProperties { id }: &AccountPageProperties) -> Htm
                 <h1>
                     { requested_account.username.clone() }
                 </h1>
+                <h3>
+                    { requested_account.created_at.to_string() }
+                </h3>
             </center>
         </div>
     )
-}
-
-pub async fn request_account_lookup_from_id(id: i32) -> anyhow::Result<AccountLookup> {
-    let client = Client::new();
-
-    let post_request = client.post("http://[::1]:3004/api/id_lookup");
-
-    let response = post_request
-        .header("Content-Type", "application/json")
-        .body(id.to_string())
-        .send()
-        .await?;
-
-    let server_response = response.text().await?;
-
-    Ok(serde_json::from_str::<AccountLookup>(&server_response)?)
-}
-
-pub async fn request_account_lookup_from_cookie(user_cookie: AuthorizedUser) -> anyhow::Result<AccountLookup> {
-    let client = Client::new();
-
-    let post_request = client.post("http://[::1]:3004/api/account");
-
-    let response = post_request
-        .header("Content-Type", "application/json")
-        .body(user_cookie.to_string())
-        .send()
-        .await?;
-
-    let server_response = response.text().await?;
-
-    Ok(serde_json::from_str::<AccountLookup>(&server_response)?)
 }

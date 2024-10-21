@@ -1,7 +1,9 @@
 use std::fmt::Display;
 
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use web_sys::HtmlTextAreaElement;
+use wasm_bindgen::JsCast;
+use web_sys::{window, HtmlDocument, HtmlTextAreaElement};
 use yew::html;
 use yew::{
     virtual_dom::VNode, Callback, Component, InputEvent, MouseEvent, Properties, TargetCast,
@@ -114,7 +116,7 @@ impl Component for Button {
 }
 
 #[derive(Serialize)]
-pub struct NewAccount {
+pub struct AccountCredentials {
     pub username: String,
     pub passw: String,
 }
@@ -145,4 +147,47 @@ impl Display for AuthorizedUser {
 #[derive(Debug, PartialEq, Properties)]
 pub struct AccountPageProperties {
     pub id: i32,
+}
+
+pub fn get_cookie(name: &str) -> Option<String> {
+    let window = window()?;
+
+    let document = window.document()?;
+
+    let html_document: HtmlDocument = document.dyn_into().ok()?;
+
+    let cookies = html_document.cookie().ok()?;
+
+    wasm_cookies::cookies::get(&cookies, name)?.ok()
+}
+
+
+pub async fn request_account_lookup_from_id(id: i32) -> anyhow::Result<AccountLookup> {
+    let client = Client::new();
+
+    let post_request = client.post("http://[::1]:3004/api/id_lookup");
+
+    let response = post_request
+        .header("Content-Type", "application/json")
+        .body(id.to_string())
+        .send()
+        .await?;
+
+    let server_response = response.text().await?;
+
+    Ok(serde_json::from_str::<AccountLookup>(&server_response)?)
+}
+
+pub async fn request_account_lookup_from_cookie() -> anyhow::Result<AccountLookup> {
+    let client = Client::new();
+
+    let post_request = client.post("http://[::1]:3004/api/account");
+
+    let response = post_request
+        .send()
+        .await?;
+
+    let server_response = response.text().await?;
+
+    Ok(serde_json::from_str::<AccountLookup>(&server_response)?)
 }
